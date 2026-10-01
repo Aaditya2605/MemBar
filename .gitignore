@@ -1,0 +1,5 @@
+# Build output — build.sh regenerates all of this.
+.build/
+build/
+.swiftpm/
+.DS_Store
