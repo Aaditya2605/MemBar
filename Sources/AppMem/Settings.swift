@@ -53,8 +53,6 @@ struct SettingsMenu: View {
 
     var body: some View {
         Menu {
-            Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
-            Divider()
             Toggle("Launch at Login", isOn: Binding(get: { login }, set: setLogin))
             Picker("Refresh Every", selection: $refreshEvery) {
                 ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
@@ -76,8 +74,10 @@ struct SettingsMenu: View {
                 }
             }
             AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
-            Divider()
+            Divider()  // what to do with the numbers now
+            Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
             Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
+            Divider()
             Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
             Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
