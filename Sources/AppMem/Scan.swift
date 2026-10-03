@@ -372,5 +372,15 @@ func selfTest() {
     precondition(menuState(.normal, waste: 0).desc == "AppMem" && menuState(.normal, waste: 0).tip == "AppMem: no leftovers")
     precondition(menuState(.warning, waste: 1 << 30).desc == "AppMem, memory pressure warning, leftovers found")
     precondition(menuState(.warning, waste: 1 << 30).tip == "Memory pressure: Warning\nLeftovers use 1.00 GB")
+
+    // Usage: idle apps and leftover age.
+    precondition(ago(20) == "1 min" && ago(45 * 60) == "45 min" && ago(3 * 3600 + 3599) == "3 h" && ago(49 * 3600) == "2 d")
+    let now = Date(), h: TimeInterval = 3600, claude = byName["Claude"]!  // open, 1300 MB
+    precondition(idleTime(claude, lastFront: now - 2 * h, now: now) == 2 * h)
+    precondition(idleTime(claude, lastFront: now - h, now: now) == nil && idleTime(claude, lastFront: nil, now: now) == nil)
+    precondition(idleTime(byName["Cursor"]!, lastFront: now - 3 * h, now: now) == nil)  // leftover
+    precondition(idleTime(byName["Weather"]!, lastFront: now - 3 * h, now: now) == nil)  // 30 MB
+    precondition(idleTime(Group(name: "macOS", isApp: false, procs: claude.procs), lastFront: now - 3 * h, now: now) == nil)
+    precondition(started(getpid())!.timeIntervalSinceNow < 0 && started(-5) == nil)
     print("ok")
 }

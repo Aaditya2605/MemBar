@@ -94,6 +94,7 @@ struct Panel: View {
                     Text("Apps \(fmt(model.total))").help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
                 RAMChart(samples: model.history.samples)
                 TextField("Search apps, processes, PIDs or :ports", text: $query)
@@ -180,6 +181,7 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        UsageBadge(g: g)
                         if let growing {
                             Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
                                 .help("Memory is growing: \(growing)")
@@ -195,6 +197,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
+                .accessibilityValue(Usage.note(g)?.help ?? "")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -248,6 +251,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: Panel(model: model))
         model.onUpdate = { [weak self] in self?.updateIcon() }
+        Usage.start()
         model.schedule()
         model.refresh()
         pressureEvents.setEventHandler { [weak self] in self?.model.refresh() }
