@@ -120,6 +120,12 @@ struct Recall {
         stopped[g.name] = (now, Set(g.procs.map(\.pid)), Set(g.procs.map(\.path)))
         respawns[g.name] = nil; labels[g.name] = nil
     }
+
+    /// Disable Launch Agent ran: nothing restarts the groups of `label` now, so no badge, and
+    /// auto-stop may stop them. Also a group that is not a leftover now: the mark waits for it.
+    mutating func forget(job label: String) {
+        for (name, l) in labels where l == label { respawns[name] = nil; labels[name] = nil }
+    }
 }
 
 /// Asserts for the rules above, run by selfTest.
@@ -205,4 +211,15 @@ func recallTest() {
     precondition(marked.respawns == "It starts again after Stop: macOS or a launch agent restarts it. launchd job: com.foo.agent")
     precondition(marked.job == "com.foo.agent" && stopped.job == nil)
     precondition(late.groups(after, responsible: { $0 }, now: t0 + 61, jobs: { list }).first { $0.name == "Foo" }!.respawns == nil)
+
+    // Its launch agent disabled: the mark goes, also from later scans; another label's does not.
+    do {
+        func foo(_ r: inout Recall) -> Group { r.groups(after, responsible: { $0 }, now: t0 + 30, jobs: { list }).first { $0.name == "Foo" }! }
+        var off = rc
+        off.forget(job: "com.bar")
+        precondition(foo(&off).job == "com.foo.agent")
+        off.forget(job: "com.foo.agent")
+        let g = foo(&off)
+        precondition(g.respawns == nil && g.job == nil && g.agentLabel == nil)
+    }
 }

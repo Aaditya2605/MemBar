@@ -94,6 +94,9 @@ final class Model: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { self.refresh() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 55) { self.refresh() }  // a respawn shows within 60 s
     }
+
+    /// Disable Launch Agent ran (Agents.swift). On the queue before the next refresh's scan.
+    func forget(job label: String) { queue.async { [self] in recall.forget(job: label) } }
 }
 
 enum Sort: String { case name, procs, cpu, memory, change }

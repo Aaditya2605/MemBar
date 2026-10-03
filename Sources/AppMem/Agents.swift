@@ -111,7 +111,9 @@ enum Agents {
         queue.async {
             let error = set(disabled: disabled, label: label, plist: plist)
             DispatchQueue.main.async {
-                (NSApp.delegate as? Delegate)?.model.refresh()  // its processes are gone, or back
+                let model = (NSApp.delegate as? Delegate)?.model
+                if disabled, error == nil { model?.forget(job: label) }  // its respawn mark goes, and with it this menu item
+                model?.refresh()  // its processes are gone, or back
                 guard let error else { return }
                 let a = NSAlert()
                 a.messageText = "Could not \(disabled ? "disable" : "enable") \(label)"
@@ -135,6 +137,8 @@ struct AgentItems: View {
         Button("Reveal Launch Agent") { plist.map(Actions.reveal) }
             .disabled(plist == nil)
             .help(plist ?? "No plist with the label \(label) in ~/Library/LaunchAgents or /Library/LaunchAgents")
+        // No disabledAgents check: Disable clears the mark (Recall.forget), and a new mark names a job that
+        // launchd ran after Stop, so it is loaded again (enabled outside AppMem) and Disable works.
         if let plist, Agents.mine(label, plist: plist) {
             Button("Disable Launch Agent…") { Agents.confirmDisable(label, plist: plist) }
         }
