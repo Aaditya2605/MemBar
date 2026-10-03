@@ -52,6 +52,7 @@ struct SettingsMenu: View {
     @State private var recent: [Freed.Entry] = []  // Stop and the auto rules write the log
     @State private var peaks: [Peak] = []  // each scan adds to the history (Day.swift)
     @State private var legend = false  // What the Badges Mean (Legend.swift)
+    @State private var agents: [String: String] = [:]  // Disable Launch Agent… writes the list (Agents.swift)
 
     var body: some View {
         Menu {
@@ -75,6 +76,7 @@ struct SettingsMenu: View {
                     }))
                 }
             }
+            DisabledAgentsMenu(agents: agents)  // Agents.swift
             AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
             PeaksMenu(peaks: peaks)  // Day.swift
             Divider()  // what to do with the numbers now
@@ -98,6 +100,7 @@ struct SettingsMenu: View {
             ignored = UserDefaults.standard.ignored
             recent = Freed.log
             peaks = (NSApp.delegate as? Delegate)?.model.history.peaksToday() ?? []
+            agents = UserDefaults.standard.disabledAgents
         }
         // SwiftUI fills the menu only when it first opens, so until then its ⌘Q
         // does nothing. A hidden button still takes the shortcut.

@@ -94,6 +94,7 @@ struct DetailsView: View {
                     Text(g.orphan ? "orphan" : "leftover").font(.caption.bold()).foregroundStyle(g.leftover ? Color.leftover : .secondary)
                         .help(flagHelp(g))
                 }
+                if let job = g?.agentLabel { AgentButton(label: job) }  // Agents.swift
                 Spacer()
                 TextField("Search name, PID, user, command or :port", text: $query)
                     .textFieldStyle(.roundedBorder).frame(maxWidth: 280)

@@ -83,6 +83,7 @@ struct Recall {
     private var owners: [pid_t: AppOwner] = [:]
     private var stopped: [String: (at: Date, pids: Set<pid_t>, paths: Set<String>)] = [:]  // by group name
     private var respawns: [String: String] = [:]  // group name → why, the badge's help
+    private var labels: [String: String] = [:]  // group name → its launchd job's label, for the menus (Agents.swift)
 
     /// group() with what earlier scans saw. `jobs` runs only to name the job of a new
     /// respawn, never each scan.
@@ -104,9 +105,10 @@ struct Recall {
                         ? launchdLabel(jobs(), pids: Set(new.map(\.pid))) : nil
                     respawns[name] = "It starts again after Stop: macOS or a launch agent restarts it"
                         + (label.map { ". launchd job: \($0)" } ?? "")
+                    labels[name] = label
                 }
             }
-            if gs[i].leftover { gs[i].respawns = respawns[name] }
+            if gs[i].leftover { gs[i].respawns = respawns[name]; gs[i].job = labels[name] }
         }
         return gs
     }
@@ -115,7 +117,7 @@ struct Recall {
     mutating func didStop(_ g: Group, at now: Date = Date()) {
         guard !g.isSimulator else { return }  // shut down, not signalled: whoever boots it again is no launch agent
         stopped[g.name] = (now, Set(g.procs.map(\.pid)), Set(g.procs.map(\.path)))
-        respawns[g.name] = nil
+        respawns[g.name] = nil; labels[g.name] = nil
     }
 }
 
@@ -200,5 +202,6 @@ func recallTest() {
     late.didStop(stopped, at: t0)
     let marked = rc.groups(after, responsible: { $0 }, now: t0 + 20, jobs: { list }).first { $0.name == "Foo" }!
     precondition(marked.respawns == "It starts again after Stop: macOS or a launch agent restarts it. launchd job: com.foo.agent")
+    precondition(marked.job == "com.foo.agent" && stopped.job == nil)
     precondition(late.groups(after, responsible: { $0 }, now: t0 + 61, jobs: { list }).first { $0.name == "Foo" }!.respawns == nil)
 }

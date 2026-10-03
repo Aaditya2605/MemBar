@@ -563,6 +563,7 @@ extension Group {
         }
         var cursor = Group(name: "Cursor", isApp: true, procs: ps(NSHomeDirectory() + "/Library/Application Support/Cursor/node", 110, 19, ports: [3000, 9229]), leftover: true)
         cursor.respawns = "Came back after Stop: launchd starts it again"
+        cursor.job = "com.todesktop.230313mzl4w4u92.ShipIt"  // a launch agent: the Details header names it
         var node = Group(name: "node", isApp: false, procs: ps("/opt/homebrew/bin/node", 420, ports: [5173]))
         node.orphan = true
         var docker = Group(name: "Docker", isApp: true, procs: ps("/Applications/Docker.app/Contents/MacOS/com.docker.backend", 900, 2, ports: [2375], stopped: true))
