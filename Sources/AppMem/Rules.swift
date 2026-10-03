@@ -19,29 +19,45 @@ func restartRule(_ name: String, _ rules: [String: Int] = UserDefaults.standard.
 /// apps do. nil: no app runs at the group's .app.
 func restartable(_ bundleID: String?) -> Bool { bundleID.map { !$0.hasPrefix("com.apple.") } ?? false }
 
-/// The open apps to restart now: above the rule's limit and not frontmost for 30 min, counted
+/// The app's own processes in `g`: in its .app, or an XPC service that macOS holds one of those
+/// responsible for (WebKit's web pages, the open panel). Not the command-line jobs it started (a
+/// terminal's shells and builds, an editor's dev server, an agent), nor the XPC services that those
+/// jobs use (an agent's SourceKitService, a script's video encoder): they are in the group only
+/// through the job. `responsible`: as in group().
+func ownProcs(_ g: Group, responsible: (pid_t) -> pid_t) -> [Proc] {
+    guard let b = g.bundle else { return [] }
+    let inApp = Set(g.procs.filter { $0.path.hasPrefix(b + "/") }.map(\.pid))
+    return g.procs.filter { inApp.contains($0.pid) || $0.path.contains(".xpc/") && inApp.contains(responsible($0.pid)) }
+}
+
+/// The open apps to restart now, each with its own processes only (ownProcs): they must be above
+/// the rule's limit, as the jobs it started do not leak with it. Not frontmost for 30 min, counted
 /// from the rule's start at the latest (`ruled`: name → the first scan that saw it), so a rule set
 /// on an app that is big and idle already waits too. A never-seen-frontmost app counts from the
 /// rule: AppMem watched it since then. Never the frontmost app, never one with a paused process
-/// (it cannot answer the quit), never an Apple app or a bare executable (`bundleID`: of the app at
-/// the group's .app), at most once in 6 h for each app (`restarted`: name → the last try).
+/// (it cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
+/// restart resumes them, else Pause When in Background would keep it from ever restarting), never
+/// an Apple app or a bare executable (`bundleID`: of the app at the group's .app), at most once in
+/// 6 h for each app (`restarted`: name → the last try).
 func restarts(_ groups: [Group], rules: [String: Int], ruled: [String: Date], lastFront: (String) -> Date?, frontmost: String?,
-              restarted: [String: Date], bundleID: (Group) -> String?, now: Date) -> [Group] {
-    groups.filter { g in
-        guard let mb = restartRule(g.name, rules), !g.leftover, !g.ignored, g.isApp, g.name != frontmost, g.mem > Int64(mb) << 20,
-              !g.procs.contains(where: \.stopped), restarted[g.name].map({ now.timeIntervalSince($0) >= 6 * 3600 }) ?? true,
-              now.timeIntervalSince(max(lastFront(g.name) ?? .distantPast, ruled[g.name] ?? now)) >= 30 * 60 else { return false }
-        return restartable(bundleID(g))
+              restarted: [String: Date], paused: [String: Set<pid_t>], bundleID: (Group) -> String?, now: Date,
+              responsible: (pid_t) -> pid_t = responsible) -> [Group] {
+    groups.compactMap { g in
+        guard let mb = restartRule(g.name, rules), !g.leftover, !g.ignored, g.isApp, g.name != frontmost,
+              !g.procs.contains(where: { $0.stopped && !(paused[g.name] ?? []).contains($0.pid) }),
+              restarted[g.name].map({ now.timeIntervalSince($0) >= 6 * 3600 }) ?? true,
+              now.timeIntervalSince(max(lastFront(g.name) ?? .distantPast, ruled[g.name] ?? now)) >= 30 * 60, restartable(bundleID(g)) else { return nil }
+        var own = g
+        own.procs = ownProcs(g, responsible: responsible)
+        return own.mem > Int64(mb) << 20 ? own : nil
     }
 }
 
-/// What a pause stops: the app's own processes that run and may get a signal (maySignal), in
-/// its .app or an XPC service (WebKit's web pages). Not the command-line jobs it started (a
-/// terminal's shells and builds, an editor's dev server, an agent): a paused build is lost time,
-/// not saved CPU, and switching to the app would not show why it hangs.
-func pauseTargets(_ g: Group, uid: uid_t = getuid(), me: pid_t = getpid()) -> [Proc] {
-    guard let b = g.bundle else { return [] }
-    return g.procs.filter { !$0.stopped && ($0.path.hasPrefix(b + "/") || $0.path.contains(".xpc/")) && maySignal($0, in: g, uid: uid, me: me) }
+/// What a pause stops: the app's own processes (ownProcs) that run and may get a signal (maySignal).
+/// Not the jobs it started: a paused build is lost time, not saved CPU, and switching to the app
+/// would not show why it hangs.
+func pauseTargets(_ g: Group, uid: uid_t = getuid(), me: pid_t = getpid(), responsible: (pid_t) -> pid_t = responsible) -> [Proc] {
+    ownProcs(g, responsible: responsible).filter { !$0.stopped && maySignal($0, in: g, uid: uid, me: me) }
 }
 
 /// Pause When in Background between scans. Main thread only, in Rules.
@@ -55,7 +71,8 @@ struct PauseState {
     /// was last frontmost or since its clock started, the later. A pause is forgotten only by a
     /// resume or when the app is gone: a scan from before the SIGSTOP still reads it as running.
     mutating func step(_ groups: [Group], rules: [String: Bool], lastFront: (String) -> Date?, frontmost: String?,
-                       regular: (Group) -> Bool, now: Date, uid: uid_t = getuid(), me: pid_t = getpid()) -> (pause: [Group], resume: [Group]) {
+                       regular: (Group) -> Bool, now: Date, uid: uid_t = getuid(), me: pid_t = getpid(),
+                       responsible: (pid_t) -> pid_t = responsible) -> (pause: [Group], resume: [Group]) {
         let on = Set(rules.filter(\.value).keys), names = Set(groups.map(\.name))
         let off = paused.filter { !on.contains($0.key) }.map(\.value)
         paused = paused.filter { on.contains($0.key) && names.contains($0.key) }  // gone: its processes quit
@@ -64,7 +81,7 @@ struct PauseState {
         for g in groups where on.contains(g.name) && paused[g.name] == nil && !g.leftover && !g.ignored && g.name != frontmost {
             guard now.timeIntervalSince(max(lastFront(g.name) ?? .distantPast, clock[g.name] ?? now)) >= 5 * 60, regular(g) else { continue }
             var own = g
-            own.procs = pauseTargets(g, uid: uid, me: me)
+            own.procs = pauseTargets(g, uid: uid, me: me, responsible: responsible)
             if !own.procs.isEmpty { paused[g.name] = own; pause.append(own) }
         }
         return (pause, off)
@@ -89,7 +106,7 @@ let pauseWarning = "Paused apps cannot play audio, sync or receive messages"
 
 /// The row's symbols and their help, for an open app with a rule. `paused`: AppMem paused it now.
 func ruleNotes(restart mb: Int?, pause: Bool, paused: Bool) -> [(symbol: String, help: String)] {
-    (mb.map { [("arrow.clockwise.circle", "Restarts above \(limitText($0)) when not used for 30 min, at most once in 6 hours")] } ?? [])
+    (mb.map { [("arrow.clockwise.circle", "Restarts when its own processes are above \(limitText($0)) and it was not used for 30 min, at most once in 6 hours")] } ?? [])
         + (!pause ? [] : paused ? [("pause.circle.fill", "Paused in the background: it resumes when you switch to it. \(pauseWarning)")]
             : [("pause.circle", "Pauses after 5 min in the background, resumes when you switch to it. \(pauseWarning)")])
 }
@@ -128,14 +145,17 @@ enum Rules {
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         ruled = Dictionary(uniqueKeysWithValues: restart.keys.map { ($0, ruled[$0] ?? now) })
         for g in restarts(groups, rules: restart, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, restarted: restarted,
-                          bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
+                          paused: pauses.paused.mapValues { Set($0.procs.map(\.pid)) }, bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
             guard let app = Actions.runningApp(g), let url = app.bundleURL, let mb = restartRule(g.name, restart) else { continue }
             restarted[g.name] = now
+            resume(g.name)  // what the pause rule stopped: it must answer the quit, and the new copy gets a new wait
             // Never forceTerminate: the app can ask to save, or cancel; then it is not opened again.
-            // Behind the front app: the user works there. Counted once it has quit.
-            // ponytail: counts all it held; the new copy takes some of it back.
+            // Behind the front app: the user works there. Counted once it has quit: its own processes.
+            // ponytail: counts all they held; the new copy takes some of it back. The jobs it started (a
+            // dev server in its terminal, an agent) can end with it, as on Quit: only its own size decides.
             Actions.quit(g, app)
-            Actions.whenQuit(app, within: 60) {
+            // The user is away by the rule, so a save dialog waits for them: hours, not seconds (see whenQuit).
+            Actions.whenQuit(app, within: 6 * 3600) {
                 Freed.record([g], how: "Restart above \(limitText(mb))")
                 let c = NSWorkspace.OpenConfiguration()
                 c.activates = false
@@ -193,7 +213,7 @@ struct RuleMenus: View {
                 Text("Off").tag(0)
                 ForEach(restartChoices, id: \.self) { Text(limitText($0)).tag($0) }
             }
-            .help("For an app that leaks: above the limit and not used for 30 min, it is asked to quit (it can save first) and opens again. At most once in 6 hours.")
+            .help("For an app that leaks: when its own processes (not the jobs it started) are above the limit and it was not used for 30 min, it is asked to quit (it can save first) and opens again. At most once in 6 hours.")
         }
         if signals && app.activationPolicy == .regular {
             Toggle("Pause When in Background", isOn: Binding(get: { UserDefaults.standard.pauseInBackground[g.name] == true }, set: { on in
@@ -240,10 +260,14 @@ func rulesTest() {
     precondition(restartRule("A", ["A": 4096]) == 4096 && restartRule("A", ["A": 1000]) == nil && restartRule("B", ["A": 4096]) == nil)
     precondition(restartable("com.tinyspeck.slackmacgap") && !restartable("com.apple.dt.Xcode") && !restartable(nil))
     let slack = app("Slack", 5000), rules = ["Slack": 4096]
+    let helper = slackApp + "/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper"
+    let web = "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+    let kit = "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/sourcekitd.framework/Versions/A/XPCServices/SourceKitService.xpc/Contents/MacOS/SourceKitService"
+    let resp: (pid_t) -> pid_t = { [12: 10, 17: 13][$0] ?? $0 }  // the web page (12) is Slack's; SourceKit (17) its node job's (13)
     func restart(_ gs: [Group], rules: [String: Int] = rules, front: String? = nil, last: Date? = t0 - 2 * h, ruled: Date = t0 - 9 * h,
-                 restarted: [String: Date] = [:], id: String? = "com.tinyspeck.slackmacgap", at: Date = t0) -> [String] {
+                 restarted: [String: Date] = [:], paused: [String: Set<pid_t>] = [:], id: String? = "com.tinyspeck.slackmacgap", at: Date = t0) -> [String] {
         restarts(gs, rules: rules, ruled: ["Slack": ruled], lastFront: { _ in last }, frontmost: front,
-                 restarted: restarted, bundleID: { _ in id }, now: at).map(\.name)
+                 restarted: restarted, paused: paused, bundleID: { _ in id }, now: at, responsible: resp).map(\.name)
     }
     precondition(restart([slack]) == ["Slack"])
     precondition(restart([app("Slack", 4096)]).isEmpty && restart([slack], rules: ["Slack": 8192]).isEmpty)  // at the limit, under it
@@ -253,28 +277,38 @@ func rulesTest() {
     precondition(restart([slack], front: "Slack").isEmpty)
     precondition(restart([slack], restarted: ["Slack": t0 - 6 * h + 1]).isEmpty && restart([slack], restarted: ["Slack": t0 - 6 * h]) == ["Slack"])
     var pausedSlack = slack
-    pausedSlack.procs.append(proc(11, slackApp + "/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper", stopped: true, 1))
-    precondition(restart([pausedSlack]).isEmpty)  // it cannot answer the quit
+    pausedSlack.procs.append(proc(11, helper, stopped: true, 1))
+    precondition(restart([pausedSlack]).isEmpty)  // paused by hand: it cannot answer the quit
+    // Paused by Pause When in Background: the restart resumes it, else it would never restart. Not with a pause by hand too.
+    precondition(restart([pausedSlack], paused: ["Slack": [11]]) == ["Slack"] && restart([pausedSlack], paused: ["Slack": [12]]).isEmpty)
+    // Only its own memory counts: not its node job (13), nor the SourceKitService that the job uses (17).
+    var jobs = app("Slack", 3000)
+    jobs.procs += [proc(13, "/opt/homebrew/bin/node", 2000), proc(17, kit, 2000)]
+    precondition(restart([jobs]).isEmpty)  // 3 GB of its own, 7 GB in all
+    jobs.procs.append(proc(12, web, 1500))  // its web page is its own: 4.5 GB
+    let own = restarts([jobs], rules: rules, ruled: ["Slack": t0 - 9 * h], lastFront: { _ in t0 - 2 * h }, frontmost: nil, restarted: [:],
+                       paused: [:], bundleID: { _ in "com.tinyspeck.slackmacgap" }, now: t0, responsible: resp)
+    precondition(own.map { $0.procs.map(\.pid) } == [[10, 12]])  // what it quits and counts as freed
     precondition(restart([slack], id: "com.apple.Safari").isEmpty && restart([slack], id: nil).isEmpty && restart([app("Slack", 5000, isApp: false)]).isEmpty)
     var left = slack
     left.leftover = true
     precondition(restart([left]).isEmpty && restart(ignoring([left], ["Slack"])).isEmpty)
 
     // Pause When in Background: what it stops.
-    let helper = slackApp + "/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper"
-    let web = "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
     var s = slack
     s.procs += [proc(11, helper), proc(12, web), proc(13, "/opt/homebrew/bin/node"), proc(14, "/bin/zsh"), proc(15, helper, uid: 502),
-                proc(16, helper, stopped: true)]
-    precondition(pauseTargets(s, uid: 501, me: 99).map(\.pid) == [10, 11, 12])  // not its jobs, other users', paused ones
-    precondition(pauseTargets(s, uid: 501, me: 11).map(\.pid) == [10, 12] && pauseTargets(Group(name: "x", isApp: true, procs: s.procs), uid: 501, me: 99).isEmpty)
+                proc(16, helper, stopped: true), proc(17, kit)]
+    precondition(pauseTargets(s, uid: 501, me: 99, responsible: resp).map(\.pid) == [10, 11, 12])  // not its jobs or their XPC services, other users', paused ones
+    precondition(pauseTargets(s, uid: 501, me: 11, responsible: resp).map(\.pid) == [10, 12])
+    precondition(pauseTargets(s, uid: 501, me: 99, responsible: { _ in -1 }).map(\.pid) == [10, 11])  // no responsibility call: no XPC service
+    precondition(pauseTargets(Group(name: "x", isApp: true, procs: s.procs), uid: 501, me: 99, responsible: resp).isEmpty)
 
     // The clock starts when the rule is first seen; 5 min in the background, then a pause.
     var st = PauseState()
     let on = ["Slack": true]
     var last: Date? = t0 - h, front: String? = nil
     func step(_ gs: [Group] = [s], rules: [String: Bool] = on, regular: Bool = true, at: TimeInterval) -> (pause: [String], resume: [String]) {
-        let r = st.step(gs, rules: rules, lastFront: { _ in last }, frontmost: front, regular: { _ in regular }, now: t0 + at, uid: 501, me: 99)
+        let r = st.step(gs, rules: rules, lastFront: { _ in last }, frontmost: front, regular: { _ in regular }, now: t0 + at, uid: 501, me: 99, responsible: resp)
         return (r.pause.map(\.name), r.resume.map(\.name))
     }
     precondition(step(at: 0).pause.isEmpty && st.clock == ["Slack": t0] && step(at: 5 * m - 1).pause.isEmpty)
@@ -313,6 +347,6 @@ func rulesTest() {
     precondition(loggedOnce(log, e("Zoom", "Background pause", 3)).count == 4)
     precondition(ruleNotes(restart: nil, pause: false, paused: false).isEmpty)
     precondition(ruleNotes(restart: 4096, pause: true, paused: false).map(\.symbol) == ["arrow.clockwise.circle", "pause.circle"])
-    precondition(ruleNotes(restart: 2048, pause: false, paused: false)[0].help == "Restarts above 2 GB when not used for 30 min, at most once in 6 hours")
+    precondition(ruleNotes(restart: 2048, pause: false, paused: false)[0].help == "Restarts when its own processes are above 2 GB and it was not used for 30 min, at most once in 6 hours")
     precondition(ruleNotes(restart: nil, pause: true, paused: true)[0].help.hasPrefix("Paused in the background: it resumes when you switch to it. Paused apps"))
 }

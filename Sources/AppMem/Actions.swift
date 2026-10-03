@@ -84,11 +84,15 @@ enum Actions {
     }
 
     /// `then` on the main thread once `app` has exited, waited for off the main thread. Never
-    /// if it still runs after `within` s: the user may have cancelled the quit.
+    /// if it still runs after `within` s, or 60 s after it came to the front: the user may have
+    /// cancelled the quit (to answer a save dialog, they bring the app to the front).
     static func whenQuit(_ app: NSRunningApplication, within: TimeInterval = 10, then: @escaping () -> Void) {
         DispatchQueue.global().async {
-            let end = Date() + within
-            while !app.isTerminated, Date() < end { Thread.sleep(forTimeInterval: 0.2) }
+            var end = Date() + within
+            while !app.isTerminated, Date() < end {
+                if app.isActive { end = min(end, Date() + 60) }
+                Thread.sleep(forTimeInterval: within > 60 ? 1 : 0.2)  // a wait of hours: once a second is enough
+            }
             if app.isTerminated { DispatchQueue.main.async(execute: then) }
         }
     }
