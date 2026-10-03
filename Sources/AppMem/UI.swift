@@ -46,7 +46,8 @@ final class Model: ObservableObject {
             // Listening ports only with the panel open, at most every 10 s or on Refresh: a
             // pass reads each fd of each of this user's processes (about 2 ms for 420 here).
             if open, force || -portsAt.timeIntervalSinceNow > 10 { ports = listenPorts(procs); portsAt = Date() }
-            addPorts(&procs, ports)
+            // Not closed: the map gets old, and the panel shows these groups first when it opens.
+            if open { addPorts(&procs, ports) }
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
@@ -222,8 +223,9 @@ struct Row: View {
                             Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
                                 .help("Memory is growing: \(growing)")
                         }
-                        // Next to a leftover or paused badge only the icon: the name keeps its room.
-                        if !g.ports.isEmpty { PortChip(ports: g.ports, network: true, limit: g.leftover || paused ? 0 : growing == nil ? 2 : 1) }
+                        // Next to a paused badge only the icon: the name keeps its room. None on a
+                        // leftover: with the badge and Stop, even the icon cuts the name that Stop is for.
+                        if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
