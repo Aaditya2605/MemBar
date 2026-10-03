@@ -637,6 +637,27 @@ func selfTest() {
                            [10, 11], procs: [10: n, 11: e], ignored: [], asLeftover: false, uid: 501)
         precondition(og.map { $0.procs.map(\.pid) } == [[11], [10]] && og.map(\.orphan) == [false, true])
     }
+
+    do {  // Mark: memory change since a point in time
+        let mb: Int64 = 1 << 20
+        func g(_ name: String, _ m: Int64) -> Group { Group(name: name, isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/x", mem: m * mb)]) }
+        let m = Mark([g("A", 1000), g("B", 2000), g("C", 300), g("D", 9), g("E", 500), g("H", 100)], ram: 8000 * mb, at: now - 720)
+        precondition(m.groups == ["A|true": 1000 * mb, "B|true": 2000 * mb, "C|true": 300 * mb, "E|true": 500 * mb, "H|true": 100 * mb])  // not D: 9 MB
+        let later = [g("A", 1320), g("B", 900), g("C", 349), g("D", 30), g("F", 200), g("G", 5), g("H", 50)]
+        let d = delta(mark: m, groups: later)
+        precondition(d.change == ["A|true": 320 * mb, "B|true": -1100 * mb, "C|true": 49 * mb, "H|true": -50 * mb])
+        precondition(d.new == ["D|true", "F|true"] && d.gone == ["E|true": 500 * mb])  // D grew past 10 MB: reads as new; G: small
+        precondition(later.map(d.key) == [320 * mb, -1100 * mb, 49 * mb, 30 * mb, 200 * mb, 0, -50 * mb])
+        let label = later.map { changeLabel($0, d) }
+        precondition(label[0]! == ("+320 MB", .red, "+320 MB since the mark: 1000 MB then") && label[1]!.text == "−1.1 GB" && label[1]!.color == .green)
+        precondition(label[2] == nil && label[6]!.text == "−50 MB" && label[3]!.text == "new" && label[4]!.text == "new" && label[5] == nil)  // 49 MB: noise
+        precondition(fmtChange(0) == "0 MB" && fmtChange(-(1 << 19) + 1) == "0 MB" && fmtChange(1536 * mb) == "+1.5 GB" && fmtChange(-50 * mb) == "−50 MB")
+        precondition(markSummary(m, ram: 9229 * mb, d, now: now) == "Since mark (12 min): RAM +1.2 GB · 2 new · 1 gone")
+        precondition(markSummary(m, ram: 7900 * mb, Mark.Delta(), now: now + 3 * h) == "Since mark (3 h): RAM −100 MB")
+        precondition(markHelp(m, d).hasSuffix(", RAM 7.81 GB\nGone since the mark: E 500 MB") && !markHelp(m, Mark.Delta()).contains("Gone"))
+        let saved = try! JSONDecoder().decode(Mark.self, from: JSONEncoder().encode(m))  // UserDefaults keeps it as JSON
+        precondition(saved.groups == m.groups && saved.ram == m.ram && abs(saved.at.timeIntervalSince(m.at)) < 0.001)
+    }
     recallTest()
     alertsTest()
     orphanTest()

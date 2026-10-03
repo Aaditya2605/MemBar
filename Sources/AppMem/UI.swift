@@ -8,6 +8,7 @@ final class Model: ObservableObject {
     @Published var groups: [Group] = []
     @Published var sys = SysMem()
     @Published var history = History()
+    @Published var mark = Mark.saved()  // Mark.swift; set it with setMark, which saves it
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
     var windowOpen = false { didSet { if windowOpen != oldValue { schedule(); refresh() } } }  // Details: scans as the panel does
@@ -74,7 +75,7 @@ final class Model: ObservableObject {
     }
 }
 
-enum Sort: String { case name, procs, cpu, memory }
+enum Sort: String { case name, procs, cpu, memory, change }
 
 struct Panel: View {
     @ObservedObject var model: Model
@@ -91,8 +92,9 @@ struct Panel: View {
     var shown: [Group] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let gs = q.isEmpty ? listed.shown : model.groups.filter { $0.name.lowercased().contains(q) || !matching($0, q).isEmpty }
+        let d = model.mark.map { delta(mark: $0, groups: model.groups) }
         func key(_ g: Group) -> Double {
-            switch sort { case .name: 0; case .procs: Double(g.procs.count); case .cpu: g.cpu; case .memory: Double(g.mem) }
+            switch sort { case .name: 0; case .procs: Double(g.procs.count); case .cpu: g.cpu; case .memory: Double(g.mem); case .change: Double(d?.key(g) ?? g.mem) }
         }
         return gs.sorted {
             if $0.leftover != $1.leftover { return $0.leftover }
@@ -112,6 +114,7 @@ struct Panel: View {
                             .controlSize(.small)
                             .help("Stop every leftover: \(model.groups.filter(\.leftover).map(\.name).joined(separator: ", "))")
                     }
+                    MarkButton(model: model)
                     Button { model.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.borderless)
                         .keyboardShortcut("r")
@@ -128,6 +131,7 @@ struct Panel: View {
                         .help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                MarkLine(model: model)
                 IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
                 RAMChart(samples: model.history.samples)
@@ -140,6 +144,7 @@ struct Panel: View {
             HStack(spacing: 6) {
                 column("App", .name).padding(.leading, 38)
                 Spacer(minLength: 4)
+                if model.mark != nil { column("Change", .change) }
                 column("Procs", .procs)
                 column("CPU", .cpu).frame(width: 40, alignment: .trailing)
                 column("Memory", .memory).frame(width: 62, alignment: .trailing)
@@ -149,9 +154,10 @@ struct Panel: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+                    let d = model.mark.map { delta(mark: $0, groups: model.groups) }
                     ForEach(shown) { g in
                         let hits = q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q)
-                        Row(g: g, only: hits, points: model.history.points(g.id)) { model.stopGroups([g]) }
+                        Row(g: g, only: hits, points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }) { model.stopGroups([g]) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -206,6 +212,7 @@ struct Row: View {
     let g: Group
     let only: [Proc]?  // search hits inside the group: show these, expanded
     var points: [(at: Date, mem: Int64)] = []  // memory history: growing badge, sparkline
+    var change: (text: String, color: Color, help: String)?  // since the mark (Mark.swift)
     let stop: () -> Void
     @State private var expanded = false
 
@@ -246,8 +253,9 @@ struct Row: View {
                         LimitBell(g: g)
                         // Next to a paused badge only the icon: the name keeps its room. None on a
                         // leftover or orphan: with the badge and Stop, even the icon cuts the name that Stop is for.
-                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil && quitIdle == nil ? 2 : 1) }
-                        Spacer(minLength: 4)
+                        // One port with a change since the mark: else the change seldom has room.
+                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil && quitIdle == nil && change == nil ? 2 : 1) }
+                        Spacer(minLength: 4).overlay(alignment: .trailing) { ChangeText(label: change, procs: g.procs.count) }
                         // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -258,7 +266,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.orphan ? ", orphan" : g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), others.isEmpty ? nil : others]
+                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), change?.help, others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 .accessibilityAction(named: "Show Details") { Details.show(g) }
                 if g.leftover || g.orphan {
@@ -394,6 +402,7 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     model.groups = orphans.mark(model.groups, procs, open: true)
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
+    model.mark = ProcessInfo.processInfo.environment["MARK"] != nil ? .demo(model.groups, sys: model.sys) : nil  // never the saved one
     let view = NSHostingView(rootView: make(model))
     view.frame = NSRect(origin: .zero, size: size)
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)

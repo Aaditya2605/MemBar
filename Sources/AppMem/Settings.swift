@@ -53,6 +53,8 @@ struct SettingsMenu: View {
 
     var body: some View {
         Menu {
+            Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
+            Divider()
             Toggle("Launch at Login", isOn: Binding(get: { login }, set: setLogin))
             Picker("Refresh Every", selection: $refreshEvery) {
                 ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
