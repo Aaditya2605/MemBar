@@ -99,17 +99,10 @@ enum Actions {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
     }
-
-    /// Group names never to flag as leftovers: UserDefaults "ignored", a [String]. The
-    /// leftover rule reads the same key.
-    static var ignored: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "ignored") ?? [] }
-        set { UserDefaults.standard.set(newValue, forKey: "ignored") }
-    }
 }
 
 /// Right-click menu of a group row. Items that cannot apply are disabled or hidden.
-/// ponytail: it acts on the processes of the last scan (at most 3 s old with the panel
+/// ponytail: it acts on the processes of the last scan (at most 5 s old with the panel
 /// open), so a process started since then is not paused or quit. Rescan first if needed.
 struct GroupMenu: View {
     let g: Group
@@ -130,9 +123,11 @@ struct GroupMenu: View {
         Button("Reveal in Finder") { file.map(Actions.reveal) }.disabled(file == nil)
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
         if g.isApp || g.isSimulator {  // the groups that can be leftovers
-            let ignored = Actions.ignored.contains(g.name)
+            // Settings > Ignored Apps lists the same names; Model rescans when the list changes.
+            let ignored = UserDefaults.standard.ignored.contains(g.name)
             Button(ignored ? "Flag as Leftover Again" : "Never Flag as Leftover") {
-                Actions.ignored = Actions.ignored.filter { $0 != g.name } + (ignored ? [] : [g.name])
+                let rest = UserDefaults.standard.ignored.filter { $0 != g.name }
+                UserDefaults.standard.set(rest + (ignored ? [] : [g.name]), forKey: "ignored")
             }
         }
     }

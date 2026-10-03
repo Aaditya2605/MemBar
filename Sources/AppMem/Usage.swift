@@ -14,7 +14,8 @@ func ago(_ t: TimeInterval) -> String {
 /// was not used for 2 h or more. nil for an app never seen frontmost: unknown is not idle.
 func idleTime(_ g: Group, lastFront: Date?, now: Date) -> TimeInterval? {
     // "macOS": a frontmost app with no .app bundle (a script's window) maps to it.
-    guard !g.leftover, g.name != "macOS", g.mem >= 500 << 20, let last = lastFront else { return nil }
+    // An ignored leftover is not flagged, but its app is still not open.
+    guard !g.leftover, !g.ignored, g.name != "macOS", g.mem >= 500 << 20, let last = lastFront else { return nil }
     let t = now.timeIntervalSince(last)
     return t >= 2 * 3600 ? t : nil
 }

@@ -21,6 +21,7 @@ struct Group: Identifiable {
     var procs: [Proc] = []
     var leftover = false
     var bundle: String?  // the app's .app folder, for its icon
+    var ignored = false  // a leftover that ignoring() unflagged: its app is still not open
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -440,5 +441,12 @@ func selfTest() {
     precondition(visible(mix, hideSmall: true, showMacOS: true).shown.map(\.name) == ["Claude", "macOS", "TinyLeft"])
     precondition(visible(mix, hideSmall: true, showMacOS: false).small.map(\.name) == ["Tiny"])
     precondition(visible(mix, hideSmall: false, showMacOS: false).shown.count == 3)
+    var tinyPaused = mix[2]
+    tinyPaused.procs[0].stopped = true  // paused from the right-click menu: it must stay findable
+    precondition(visible([tinyPaused], hideSmall: true, showMacOS: true).shown.count == 1)
+    // An ignored leftover's app is not open: not idle. An ignored app that is open can be.
+    precondition(ig[0].ignored && !ig[1].ignored && idleTime(ig[0], lastFront: now - 3 * h, now: now) == nil)
+    precondition(idleTime(ignoring([claude], ["Claude"])[0], lastFront: now - 2 * h, now: now) == 2 * h)
+    precondition(ignoring(groups, ["Claude"]).allSatisfy { !$0.ignored })  // open: nothing to unflag
     print("ok")
 }

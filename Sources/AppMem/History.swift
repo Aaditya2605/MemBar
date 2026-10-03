@@ -14,7 +14,7 @@ struct History {
     private(set) var samples: [Sample] = []
     static let cap = 240  // 60 min at one sample each 15 s
 
-    /// One sample per scan, but at most one each 15 s: the open panel scans every 3 s.
+    /// One sample per scan, but at most one each 15 s: the open panel scans every 2-5 s.
     mutating func add(_ groups: [Group], sys: SysMem, at now: Date = Date()) {
         // ponytail: wall clock, so a clock set back stops new samples until it catches up.
         if let last = samples.last, now.timeIntervalSince(last.at) < 15 { return }

@@ -74,6 +74,8 @@ func jsonReport(_ groups: [Group], sys: SysMem, cpu: Bool) -> Data {
 /// ponytail: no top by default (like the menu bar icon): it costs 0.35 s of CPU,
 /// and without it only root processes in a leftover group show 0 memory.
 /// With `cpu`, two scans 1 s apart: CPU % needs two CPU times.
+/// Ignored apps (Settings) are not leftovers here either: --stop must not stop what
+/// the menu has no Stop for. Only --list keeps them, to compare with the prototype.
 private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group] {
     let start = Date()
     var procs = scan(top: top)
@@ -83,7 +85,7 @@ private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group]
         procs = scan(top: top)
         addCPU(&procs, prev: prev, seconds: seconds)
     }
-    return group(procs, responsible: responsible)
+    return ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
 }
 
 /// Runs the command in `args` and returns the exit status; nil when `args` has
