@@ -789,6 +789,7 @@ func selfTest() {
         precondition(logLine(Freed.Entry(at: t0, name: "Cursor", mem: 800 << 20, how: "Auto-stop")).hasSuffix("  Auto-stop: Cursor, 800 MB"))
     }
     do { rulesTest() }  // Rules.swift: Restart When Above, Pause When in Background
+    do { insightTest() }  // Insights.swift: the insight line's candidates, order, thresholds, hiding
 
     do {  // orphans with auto-stop, alerts, the report, and the emulator's own group
         let t0 = Date(timeIntervalSince1970: 1_000_000), node = "/opt/homebrew/bin/node"

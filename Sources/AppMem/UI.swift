@@ -185,6 +185,7 @@ struct Panel: View {
             Divider()
             let s = shown, typed = query.trimmingCharacters(in: .whitespaces)  // shown sorts: once per render
             IntroCard()  // Legend.swift. Not in the lazy list: scrolled away, it would drop its close watch
+            InsightLine(model: model, act: act)  // Insights.swift: the one thing to do now
             ScrollView {
                 LazyVStack(spacing: 0) {
                     let q = q, d = markDelta
