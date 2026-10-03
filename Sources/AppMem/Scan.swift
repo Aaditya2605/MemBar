@@ -524,6 +524,28 @@ func selfTest() {
         precondition(Delegate.instancesRespond(to: NSSelectorFromString("applicationWillFinishLaunching:")))
     }
 
+    do {  // MenuGraph.swift: the RAM Graph's samples, line and tooltip
+        let t0 = Date(timeIntervalSince1970: 1_000_000), gb: Int64 = 1 << 30, size = CGSize(width: 28, height: 14)
+        func s(_ sec: Double, _ ram: Int64 = 8 << 30) -> Sample { Sample(at: t0 + sec, ram: ram, swap: 0, groups: [:]) }
+        // One a minute: the open panel's (each 15 s) thinned, the closed ones (60 to 70 s apart) all kept; the newest 29.
+        precondition(graphSamples((0...40).map { s(Double($0) * 15) }).map(\.at) == (0...10).map { t0 + Double($0) * 60 })
+        let hour = (0..<60).map { s(Double($0) * 65) }, kept = graphSamples(hour)
+        precondition(kept.count == 29 && kept.first!.at == hour[31].at && kept.last!.at == hour[59].at)
+        precondition(graphSamples([]).isEmpty && graphSamples([s(0)]).count == 1)
+        // 0 to all the RAM on the height, 0.5 pt in for the line, on 0.5 pt steps; over the full width.
+        let pts = graphPoints([0, 8 * gb, 16 * gb, 20 * gb], top: 16 * gb, size: size)
+        precondition(pts.map(\.y) == [0.5, 7, 13.5, 13.5] && pts.map(\.x) == [0, 28.0 / 3, 56.0 / 3, 28])
+        precondition(graphPoints([gb], top: 16 * gb, size: size) == [CGPoint(x: 0, y: 1.5), CGPoint(x: 28, y: 1.5)])  // one: flat, full width
+        precondition(graphPoints(Array(repeating: 8 * gb, count: 29), top: 16 * gb, size: size).allSatisfy { $0.y == 7 })  // flat
+        precondition(graphPoints([], top: 16 * gb, size: size).isEmpty && graphPoints([gb], top: 0, size: size).isEmpty)
+        precondition(graphTip([s(0, 11 * gb), s(1680, 11 * gb + (307 << 20))], physical: 16 * gb) == "RAM used in the last 28 min: 11.0 GB to 11.3 GB of 16 GB")
+        precondition(graphTip([s(0, 11 * gb)], physical: 16 * gb) == "RAM used in the last 1 min: 11.0 GB of 16 GB")
+        precondition(menuBarText(.graph, sys: SysMem(level: 4), waste: gb) == "")  // the graph is the image, no text
+        // updateIcon keeps an image whose description is the state's: the graph must have the plain icon's.
+        let icon = Delegate.graphIcon(menuState(.warning, waste: gb), ram: [], top: 16 * gb, pressure: .warning)
+        precondition(icon.accessibilityDescription == menuState(.warning, waste: gb).desc && icon.size == NSSize(width: 48, height: 14))
+    }
+
     do {  // simulator devices, the Android emulator group
         let a = "193A1049-1F4C-44E8-83CB-BFD1ED9F19CA", b = "0D9C2F1E-7B3A-4C8D-9E6F-112233445566", devs = "/Users/a/Library/Developer/CoreSimulator/Devices/"
         precondition(udid(in: devs + a + "/data/Containers/Bundle/Application/X/My.app/My") == a)

@@ -467,6 +467,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         item.button?.toolTip = s.tip
         updateTitle()  // MenuBar.swift
+        updateGraph(s)  // MenuGraph.swift: Menu Bar Shows > RAM Graph
     }
 
     @objc func toggle() {

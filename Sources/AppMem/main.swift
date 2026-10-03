@@ -4,6 +4,10 @@ if CommandLine.arguments.contains("--test") { selfTest(); exit(0) }
 if CommandLine.arguments.contains("--list") { printGroups(); exit(0) }
 if let status = runCLI(Array(CommandLine.arguments.dropFirst())) { exit(status) }  // CLI.swift
 #if DEBUG
+if ProcessInfo.processInfo.environment["MENUBAR"] != nil, let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
+    snapshotMenuBar(to: CommandLine.arguments[i + 1])  // MenuGraph.swift: the RAM Graph item, not the panel
+    exit(0)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
     snapshot(to: CommandLine.arguments[i + 1]) { Panel(model: $0, query: CommandLine.arguments.dropFirst(i + 2).first ?? "") }
     exit(0)

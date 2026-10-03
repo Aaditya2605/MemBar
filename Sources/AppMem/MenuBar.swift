@@ -6,9 +6,9 @@ import SwiftUI
 // appmem:// URLs. No URL stops anything: any web page can open one.
 
 enum MenuBarShows: String, CaseIterable {
-    case icon, leftovers, ram, pressure
+    case icon, leftovers, ram, pressure, graph
     var title: String {
-        switch self { case .icon: "Icon Only"; case .leftovers: "Leftover Size"; case .ram: "RAM Used"; case .pressure: "Memory Pressure" }
+        switch self { case .icon: "Icon Only"; case .leftovers: "Leftover Size"; case .ram: "RAM Used"; case .pressure: "Memory Pressure"; case .graph: "RAM Graph" }
     }
 }
 
@@ -28,7 +28,7 @@ func padDigits(_ s: String, _ digits: Int) -> String {
 /// The text next to the icon; "" = the icon only. Leftover Size only while there are leftovers.
 func menuBarText(_ shows: MenuBarShows, sys: SysMem, waste: Int64) -> String {
     switch shows {
-    case .icon: ""
+    case .icon, .graph: ""  // the graph is in the image (MenuGraph.swift)
     case .leftovers: waste > 0 ? padDigits(short(waste), 3) : ""
     case .ram: padDigits(short(sys.ram), 3)
     case .pressure: padDigits("\(sys.usedPct)%", 2)
