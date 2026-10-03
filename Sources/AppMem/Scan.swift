@@ -19,6 +19,7 @@ struct Group: Identifiable {
     var procs: [Proc] = []
     var leftover = false
     var bundle: String?  // the app's .app folder, for its icon
+    var respawns: String?  // it came back after Stop: why (see Recall)
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -93,14 +94,14 @@ func owner(of pid: pid_t, responsible: pid_t, procs: [pid_t: Proc]) -> pid_t {
     return top
 }
 
-/// Groups sorted by memory, leftovers first.
-func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t) -> [Group] {
+/// Groups sorted by memory, leftovers first. `owners`: remembered app owners (Recall).
+func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:]) -> [Group] {
     let open = openApps(procs.values.lazy.map(\.path))
     var groups: [String: Group] = [:]
     var notExtension: Set<String> = []  // groups with a process that no app extension owns
     for p in procs.values {
         let top = owner(of: p.pid, responsible: responsible(p.pid), procs: procs)
-        let topPath = procs[top]?.path ?? p.path
+        let topPath = ownerPath(p, top: top, procs: procs, owners: owners)
         let (name, isApp) = appOf(topPath), key = "\(name)|\(isApp)"
         groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
         if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
@@ -324,5 +325,6 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+    recallTest()
     print("ok")
 }

@@ -13,6 +13,7 @@ final class Model: ObservableObject {
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
+    private var recall = Recall()  // queue only
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
     var total: Int64 { groups.reduce(0) { $0 + $1.mem } }
@@ -33,14 +34,16 @@ final class Model: ObservableObject {
             var procs = scan(top: top)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
-            let g = group(procs, responsible: responsible), s = systemMem()
+            let g = recall.groups(procs, responsible: responsible), s = systemMem()
             DispatchQueue.main.async { self.groups = g; self.sys = s; self.onUpdate() }
         }
     }
 
     func stopGroup(_ g: Group) {
         stop(g)
+        queue.async { [self] in recall.didStop(g) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { self.refresh() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 55) { self.refresh() }  // a respawn shows within 60 s
     }
 }
 
@@ -170,6 +173,10 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        if let why = g.respawns {  // an icon: a second word would squeeze the name
+                            Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
+                                .help(why).accessibilityLabel("Respawns")
+                        }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -180,6 +187,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")")
+                .accessibilityHint(g.respawns ?? "")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
