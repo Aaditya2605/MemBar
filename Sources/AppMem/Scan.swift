@@ -324,5 +324,15 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+    // Settings: refresh choices, the ignore list, the list filters
+    precondition(refreshSeconds(2) == 2 && refreshSeconds(5) == 5 && refreshSeconds(0) == 3 && refreshSeconds(-1) == 3)
+    let ig = ignoring(groups, ["Cursor"])
+    precondition(ig.filter(\.leftover).map(\.name) == ["iOS Simulator"] && ig.map(\.name) == groups.map(\.name))
+    precondition(ignoring(groups, ["cursor"]).first { $0.name == "Cursor" }!.leftover)  // exact names only
+    let mix = [byName["Claude"]!, byName["macOS"]!, Group(name: "Tiny", isApp: true, procs: [p(60, 1, "/t", 9).1]),
+               Group(name: "TinyLeft", isApp: true, procs: [p(61, 1, "/u", 1).1], leftover: true)]  // macOS: 10 MB, not under
+    precondition(visible(mix, hideSmall: true, showMacOS: true).shown.map(\.name) == ["Claude", "macOS", "TinyLeft"])
+    precondition(visible(mix, hideSmall: true, showMacOS: false).small.map(\.name) == ["Tiny"])
+    precondition(visible(mix, hideSmall: false, showMacOS: false).shown.count == 3)
     print("ok")
 }

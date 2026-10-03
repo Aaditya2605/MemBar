@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-// Menu bar item + popover. The popover refreshes every 3 s while it is open;
-// closed, a scan runs once a minute, only to update the icon.
+// Menu bar item + popover. The popover refreshes every 2-5 s while it is open
+// (Settings > Refresh Every); closed, a scan runs once a minute, only to update the icon.
 
 final class Model: ObservableObject {
     @Published var groups: [Group] = []
@@ -13,13 +13,22 @@ final class Model: ObservableObject {
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
+    private var watches: [NSKeyValueObservation] = []
+
+    init() {
+        // Settings apply at once, also an ignore list that the right-click menu writes.
+        // Main queue: KVO reports on the writer's thread, and the timer needs the main run loop.
+        watches = [UserDefaults.standard.observe(\.ignored) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } },
+                   UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } }]
+    }
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
     var total: Int64 { groups.reduce(0) { $0 + $1.mem } }
 
     func schedule() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: panelOpen ? 3 : 60, repeats: true) { [weak self] _ in self?.refresh() }
+        let every = panelOpen ? refreshSeconds(UserDefaults.standard.refreshEvery) : 60
+        timer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] _ in self?.refresh() }
         timer?.tolerance = panelOpen ? 0.5 : 10
     }
 
@@ -33,7 +42,7 @@ final class Model: ObservableObject {
             var procs = scan(top: top)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
-            let g = group(procs, responsible: responsible), s = systemMem()
+            let g = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
             DispatchQueue.main.async { self.groups = g; self.sys = s; self.onUpdate() }
         }
     }
@@ -49,13 +58,18 @@ enum Sort: String { case name, procs, cpu, memory }
 struct Panel: View {
     @ObservedObject var model: Model
     @AppStorage("sort") private var sort = Sort.memory
+    @AppStorage("hideSmall") private var hideSmall = false
+    @AppStorage("showMacOS") private var showMacOS = true
     @State var query = ""
+
+    /// The Settings filters thin the plain list; a search looks at every group.
+    var listed: (shown: [Group], small: [Group]) { visible(model.groups, hideSmall: hideSmall, showMacOS: showMacOS) }
 
     /// Leftovers first, then by the sort column. A query keeps the groups whose name,
     /// or one of whose process names or PIDs, matches.
     var shown: [Group] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let gs = q.isEmpty ? model.groups : model.groups.filter { $0.name.lowercased().contains(q) || !matching($0, q).isEmpty }
+        let gs = q.isEmpty ? listed.shown : model.groups.filter { $0.name.lowercased().contains(q) || !matching($0, q).isEmpty }
         func key(_ g: Group) -> Double {
             switch sort { case .name: 0; case .procs: Double(g.procs.count); case .cpu: g.cpu; case .memory: Double(g.mem) }
         }
@@ -79,7 +93,7 @@ struct Panel: View {
                         .keyboardShortcut("r")
                         .help("Refresh (⌘R)")
                         .accessibilityLabel("Refresh")
-                    Button("Quit") { NSApp.terminate(nil) }
+                    SettingsMenu()
                 }
                 HStack(spacing: 12) {
                     Text("RAM \(fmt(model.sys.ram)) of \(fmt(Int64(ProcessInfo.processInfo.physicalMemory)))")
@@ -112,6 +126,13 @@ struct Panel: View {
                     }
                 }
                 .padding(.vertical, 4)
+            }
+            let small = query.trimmingCharacters(in: .whitespaces).isEmpty ? listed.small : []
+            if !small.isEmpty {
+                Divider()
+                Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit().padding(.vertical, 4)
+                    .help("Hidden by Settings > Hide Groups Under 10 MB")
             }
         }
         .frame(width: 400, height: 540)
@@ -290,7 +311,7 @@ func snapshot(to path: String, query: String) {
     Thread.sleep(forTimeInterval: 1)
     procs = scan(top: top)
     addCPU(&procs, prev: prev, seconds: 1)
-    model.groups = group(procs, responsible: responsible)
+    model.groups = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
     model.sys = systemMem()
     let view = NSHostingView(rootView: Panel(model: model, query: query))
     view.frame = NSRect(x: 0, y: 0, width: 400, height: 540)
