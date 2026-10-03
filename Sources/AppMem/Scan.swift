@@ -325,6 +325,20 @@ func selfTest() {
     precondition(byName["iOS Simulator"]!.leftover && !byName["Weather"]!.leftover && !byName["macOS"]!.leftover)
     precondition(!byName["WhatsApp"]!.leftover && byName["WhatsApp"]!.procs.map(\.pid) == [50, 51])
     precondition(groups.map(\.name) == ["Cursor", "iOS Simulator", "Claude", "WhatsApp", "Weather", "macOS"])
+    // CLI.swift: a stray or misspelt flag must never turn into a stop.
+    precondition(parseArgs([]) == nil && parseArgs(["--snapshot", "x.png"]) == nil && parseArgs(["-h"]) == .help)
+    precondition(parseArgs(["--json", "--cpu"]) == .json(cpu: true) && parseArgs(["--stop", "--json"]) == .json(cpu: false))
+    precondition(parseArgs(["Cursor", "--dry-run", "--stop", "iOS Simulator"]) == .stop(names: ["Cursor", "iOS Simulator"], dryRun: true))
+    precondition(parseArgs(["--stop", "--dryrun"]) == .bad("unknown flag for --stop: --dryrun"))
+    precondition(parseArgs(["--dry-run"]) == .bad("--dry-run works only with --stop"))
+    precondition(stopTargets(groups, []).targets.map(\.name) == ["Cursor", "iOS Simulator"])
+    let named = stopTargets(groups, ["cursor", "Claude", "nope"])  // Claude is open: not a leftover
+    precondition(named.targets.map(\.name) == ["Cursor"] && named.missing == ["Claude", "nope"])
+    let json = try! JSONSerialization.jsonObject(with: jsonReport(groups, sys: SysMem(swap: 2, level: 2), cpu: false)) as! [String: Any]
+    let cursor = (json["groups"] as! [[String: Any]])[0]
+    precondition(json["swap"] as? Int64 == 2 && json["pressure"] as? String == "warning")
+    precondition(cursor["name"] as? String == "Cursor" && cursor["leftover"] as? Bool == true)
+    precondition(cursor["memory"] as? Int64 == 800 << 20 && cursor["processCount"] as? Int == 2 && cursor["cpu"] == nil)
     var cp = procs
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
