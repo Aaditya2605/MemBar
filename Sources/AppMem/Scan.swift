@@ -407,6 +407,11 @@ func selfTest() {
     precondition(idleTime(byName["Weather"]!, lastFront: now - 3 * h, now: now) == nil)  // 30 MB
     precondition(idleTime(Group(name: "macOS", isApp: false, procs: claude.procs), lastFront: now - 3 * h, now: now) == nil)
     precondition(started(getpid())!.timeIntervalSinceNow < 0 && started(-5) == nil)
+    var sim = byName["iOS Simulator"]!  // booted 1 h ago (30); a CoreSimulator daemon from last week must not date it
+    sim.procs.append(p(31, 1, "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/simdiskimaged", 5).1)
+    let since: [pid_t: Date] = [30: now - h, 31: now - 168 * h, 10: now - 3 * h, 11: now - h]
+    precondition(leftoverAge(sim, started: { since[$0] }, now: now) == h && leftoverAge(byName["Cursor"]!, started: { since[$0] }, now: now) == 3 * h)
+    precondition(leftoverAge(claude, started: { since[$0] }, now: now) == nil)  // open: no age
 
     do {  // right-click actions: who may get a signal, which items apply
         let cursor = byName["Cursor"]!, weather = byName["Weather"]!

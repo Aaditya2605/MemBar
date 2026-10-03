@@ -20,6 +20,14 @@ func idleTime(_ g: Group, lastFront: Date?, now: Date) -> TimeInterval? {
     return t >= 2 * 3600 ? t : nil
 }
 
+/// How long leftover `g` has run: its oldest process; for the simulator, its first booted
+/// device, as its group also holds CoreSimulator daemons that run for weeks.
+func leftoverAge(_ g: Group, started: (pid_t) -> Date?, now: Date) -> TimeInterval? {
+    guard g.leftover else { return nil }
+    let procs = g.isSimulator ? g.procs.filter { $0.name == "launchd_sim" } : g.procs
+    return procs.compactMap { started($0.pid) }.min().map { now.timeIntervalSince($0) }
+}
+
 /// When `pid` started. sysctl, not proc_pidinfo: it works for other users' processes too.
 func started(_ pid: pid_t) -> Date? {
     var info = kinfo_proc(), size = MemoryLayout<kinfo_proc>.stride
@@ -35,11 +43,16 @@ func started(_ pid: pid_t) -> Date? {
 enum Usage {
     private static let key = "lastFront"
     // ponytail: never pruned; one entry per app ever used, a few hundred at most.
-    private static var seen = UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]
+    private static var seen: [String: Double] = [:]
     private static var front: String?  // frontmost now: in use, whatever its stamp says
     private static var saving = false
 
     static func start() {
+        // Saved stamps count as now: AppMem did not see the time it was not running, and an
+        // app used then is not idle. The names carry over: an app open from launch on and
+        // never brought to the front (Slack at login) reads as idle 2 h later.
+        let now = Date().timeIntervalSince1970
+        seen = (UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:]).mapValues { _ in now }
         let ws = NSWorkspace.shared
         activated(ws.frontmostApplication)
         ws.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
@@ -56,8 +69,8 @@ enum Usage {
         save()
     }
 
-    /// At most one write a minute. ponytail: switches in the last minute before a
-    /// quit are lost; the next launch takes the frontmost app again.
+    /// At most one write a minute. ponytail: an app first frontmost in the last minute
+    /// before a quit is not saved; after the next launch it is not idle until it is frontmost once.
     private static func save() {
         guard !saving else { return }
         saving = true
@@ -73,15 +86,14 @@ enum Usage {
         return idleTime(g, lastFront: last, now: Date())
     }
 
-    /// How long the oldest process of a leftover runs. Only for leftovers: a sysctl each.
-    static func age(_ g: Group) -> TimeInterval? {
-        guard g.leftover, let first = g.procs.compactMap({ started($0.pid) }).min() else { return nil }
-        return -first.timeIntervalSinceNow
-    }
+    /// Only for leftovers: a sysctl each.
+    static func age(_ g: Group) -> TimeInterval? { leftoverAge(g, started: started, now: Date()) }
 
     /// "for 2 d" after a leftover, "idle 3 h" after an idle app, and the help for it.
     static func note(_ g: Group) -> (word: String, age: String, help: String)? {
-        if let t = age(g) { return ("for", ago(t), "Its oldest process started \(ago(t)) ago") }
+        if let t = age(g) {
+            return ("for", ago(t), g.isSimulator ? "The first device was booted \(ago(t)) ago" : "Its oldest process started \(ago(t)) ago")
+        }
         if let t = idle(g) { return ("idle", ago(t), "Not used for \(ago(t)). Quit it to free \(fmt(g.mem)).") }
         return nil
     }
