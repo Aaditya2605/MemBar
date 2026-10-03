@@ -49,7 +49,7 @@ final class Model: ObservableObject {
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
-            DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s); self.onUpdate() }
+            DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate() }
         }
     }
 
