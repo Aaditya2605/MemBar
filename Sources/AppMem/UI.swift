@@ -8,7 +8,7 @@ import SwiftUI
 final class Model: ObservableObject {
     @Published var groups: [Group] = []
     @Published var sys = SysMem()
-    @Published var history = History()
+    @Published var history = HistoryFile.load()  // Day.swift: the last 24 h from disk, saved as it grows
     @Published var mark = Mark.saved()  // Mark.swift; set it with setMark, which saves it
     var slots: [String: Int] = [:]  // RAMBar.swift: the largest groups' colors, kept from scan to scan
     var markAsked = false  // markNow: the next scan with the panel open takes the mark
@@ -72,6 +72,7 @@ final class Model: ObservableObject {
                 self.stopped = self.stopped.filter { id, _ in g.contains { $0.id == id } }
                 self.slots = keepSlots(g, kept: self.slots)
                 self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
+                HistoryFile.save(self.history)  // at most every 5 min, off the main thread
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
             }
@@ -158,7 +159,7 @@ struct Panel: View {
                 MarkLine(model: model)
                 IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys, groups: model.groups, slots: model.slots).font(.caption).foregroundStyle(.secondary)
-                RAMChart(samples: model.history.samples)
+                HistoryChart(history: model.history)  // Day.swift: RAMChart over 1 h or 24 h
                 TextField("Search or filter: leftover, >1gb, :3000", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)

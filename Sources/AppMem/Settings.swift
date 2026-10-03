@@ -50,6 +50,7 @@ struct SettingsMenu: View {
     @State private var login = false
     @State private var ignored: [String] = []
     @State private var recent: [Freed.Entry] = []  // Stop and the auto rules write the log
+    @State private var peaks: [Peak] = []  // each scan adds to the history (Day.swift)
 
     var body: some View {
         Menu {
@@ -74,6 +75,7 @@ struct SettingsMenu: View {
                 }
             }
             AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
+            PeaksMenu(peaks: peaks)  // Day.swift
             Divider()  // what to do with the numbers now
             Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
             Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
@@ -90,6 +92,7 @@ struct SettingsMenu: View {
             login = SMAppService.mainApp.status == .enabled
             ignored = UserDefaults.standard.ignored
             recent = Freed.log
+            peaks = (NSApp.delegate as? Delegate)?.model.history.peaksToday() ?? []
         }
         // SwiftUI fills the menu only when it first opens, so until then its ⌘Q
         // does nothing. A hidden button still takes the shortcut.
