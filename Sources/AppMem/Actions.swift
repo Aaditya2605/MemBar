@@ -162,6 +162,7 @@ struct ProcMenu: View {
 }
 
 extension Model {
-    /// The header's Stop All: Stop for each leftover, with Stop's own checks.
-    func stopAll() { stopGroups(groups.filter(\.leftover), how: "Stop All") }
+    /// The header's Stop All: Stop for each leftover, with Stop's own checks. `only`: the quick
+    /// menu's, the ids of the leftovers it named; the ones that are still leftovers now.
+    func stopAll(only ids: Set<String>? = nil) { stopGroups(groups.filter { $0.leftover && ids?.contains($0.id) ?? true }, how: "Stop All") }
 }

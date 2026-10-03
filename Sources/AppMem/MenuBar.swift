@@ -127,8 +127,8 @@ extension Delegate {
 
     func showQuickMenu() {
         if popover.isShown { popover.performClose(nil) }
-        // With the panel closed the numbers can be a minute old. This scan is done long before
-        // a click on an item, and Stop All acts on the groups then, not on this menu's numbers.
+        // With the panel closed the numbers can be a minute old. This scan lands while the menu
+        // is open and can find more leftovers: Stop All stops only the ones this menu named.
         model.refresh()
         let menu = NSMenu()
         @discardableResult func add(_ title: String, _ action: Selector?, key: String = "") -> NSMenuItem {
@@ -139,8 +139,9 @@ extension Delegate {
         add("Open AppMem", #selector(openPanel))
         add(infoLine(model.sys, physical: Int64(ProcessInfo.processInfo.physicalMemory)), nil)  // no action: disabled
         if model.waste > 0 {
-            add("Stop All Leftovers (\(short(model.waste)))", #selector(stopAllLeftovers)).toolTip =
-                "Stop every leftover: " + model.groups.filter(\.leftover).map(\.name).joined(separator: ", ")
+            let left = model.groups.filter(\.leftover), i = add("Stop All Leftovers (\(short(model.waste)))", #selector(stopAllLeftovers))
+            i.toolTip = "Stop every leftover: " + left.map(\.name).joined(separator: ", ")
+            i.representedObject = Set(left.map(\.id))
         }
         add("Copy Report", #selector(copyReport))
         add("Refresh", #selector(refreshNow), key: "r")
@@ -153,7 +154,7 @@ extension Delegate {
 
     // Async: the menu, or the launch, is not done yet; a popover shown in it can close at once.
     @objc func openPanel() { DispatchQueue.main.async { [self] in if !popover.isShown { toggle() } } }
-    @objc func stopAllLeftovers() { model.stopAll() }  // the panel's Stop All
+    @objc func stopAllLeftovers(_ sender: NSMenuItem) { model.stopAll(only: sender.representedObject as? Set<String> ?? []) }
     @objc func copyReport() { model.copyReport() }
     @objc func refreshNow() { model.refresh(force: true) }
 
