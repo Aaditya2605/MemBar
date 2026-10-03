@@ -18,17 +18,23 @@ func launchdPIDs(_ list: String) -> Set<pid_t> {
 /// Orphans of `uid` and every process under them. An orphan: a command-line process
 /// (isCLI: not in an .app, not Apple's, not tmux and the like, whose sessions are kept
 /// on purpose) that launchd adopted (ppid 1) but does not run as a job, and `detached`.
+/// Not one with a process on a live `terminal` under it: a session keeper that the name
+/// list misses (mosh-server, dtach, abduco), whose pty holds the user's shell and its vim.
 /// Never AppMem or its children: they are not in the walk.
-func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool,
+func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool, terminal: (pid_t) -> Bool,
              uid: uid_t = getuid(), me: pid_t = getpid()) -> Set<pid_t> {
     var kids: [pid_t: [pid_t]] = [:]
     for p in procs.values where p.uid == uid && p.pid != me { kids[p.ppid, default: []].append(p.pid) }
-    var todo = procs.values.filter {
+    let roots = procs.values.filter {
         $0.uid == uid && $0.ppid == 1 && $0.pid != me && !jobs.contains($0.pid) && isCLI($0.path) && detached($0.pid)
-    }.map(\.pid)
+    }
     var out: Set<pid_t> = []
-    while let pid = todo.popLast() {
-        if out.insert(pid).inserted { todo += kids[pid] ?? [] }  // inserted: a PID loop ends
+    for r in roots {
+        var tree: Set<pid_t> = [], todo = [r.pid]
+        while let pid = todo.popLast() {
+            if tree.insert(pid).inserted { todo += kids[pid] ?? [] }  // inserted: a PID loop ends
+        }
+        if !tree.contains(where: terminal) { out.formUnion(tree) }
     }
     return out
 }
@@ -74,16 +80,18 @@ func orphaning(_ groups: [Group], _ orphans: Set<pid_t>, procs: [pid_t: Proc], i
     }
 }
 
-/// No controlling terminal (none, or its device is gone: the tab closed), and started
-/// before `t`, the time of the job list: a newer process may be a job it does not have.
-/// sysctl, as started(): one call gives both.
-func detached(_ pid: pid_t, before t: Date) -> Bool {
+/// No live controlling terminal, and started before `t`, the time of the job list: a newer
+/// process may be a job it does not have.
+func detached(_ pid: pid_t, before t: Date) -> Bool { started(pid).map { $0 < t } == true && !hasTerminal(pid) }
+
+/// A controlling terminal whose device is still there: an open tab, or a session keeper's
+/// pty. None, or its device is gone (the tab closed): false. sysctl, as started().
+func hasTerminal(_ pid: pid_t) -> Bool {
     var info = kinfo_proc(), size = MemoryLayout<kinfo_proc>.stride
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
     guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }  // size 0: gone
-    let s = info.kp_proc.p_un.__p_starttime, tty = info.kp_eproc.e_tdev
-    let older = Double(s.tv_sec) + Double(s.tv_usec) / 1e6 < t.timeIntervalSince1970
-    return older && (tty == -1 || devname(tty, S_IFCHR) == nil)  // -1: NODEV, no terminal
+    let tty = info.kp_eproc.e_tdev
+    return tty != -1 && devname(tty, S_IFCHR) != nil  // -1: NODEV, no terminal
 }
 
 /// The Model's job list (scan queue only). launchctl is a process start, so only with
@@ -96,7 +104,7 @@ struct Orphans {
     mutating func mark(_ groups: [Group], _ procs: [pid_t: Proc], open: Bool) -> [Group] {
         if open, -at.timeIntervalSinceNow > 30 { let now = Date(); jobs = launchdPIDs(launchctlList()); at = now }
         let at = at, d = UserDefaults.standard
-        return orphaning(groups, orphans(procs, jobs: jobs, detached: { detached($0, before: at) }), procs: procs,
+        return orphaning(groups, orphans(procs, jobs: jobs, detached: { detached($0, before: at) }, terminal: hasTerminal), procs: procs,
                          ignored: d.ignored, asLeftover: d.countOrphans)
     }
 }
@@ -120,6 +128,7 @@ func orphanTest() {
         p(31, 1, "/usr/local/bin/x"),                                  // system path
         p(32, 1, "/Users/a/Library/Application Support/Foo/agent"),    // an app's (Recall, leftovers)
         p(33, 1, "/opt/homebrew/bin/tmux"), p(34, 33, "/bin/zsh"),     // a session kept on purpose
+        p(35, 1, "/opt/homebrew/bin/mosh-server"), p(36, 35, "/bin/zsh"), p(37, 36, "/opt/homebrew/bin/nvim"),  // too: its pty is live
         p(40, 1, "/opt/homebrew/bin/python3"),                         // still has its terminal
         p(50, 1, node, uid: 502),                                      // another user's
         p(60, 1, "/Users/a/dev/AppMem"), p(61, 60, node),              // AppMem itself, its child
@@ -127,9 +136,11 @@ func orphanTest() {
         p(80, 1, "/Users/a/dev/srv"), p(81, 80, node),                 // an agent's, in its open app's group
         p(90, 1, "/opt/homebrew/bin/vite"),                            // in a leftover's group: Recall knows its app
     ])
-    let o = orphans(procs, jobs: [20], detached: { $0 != 40 }, uid: 501, me: 60)
+    let tty: (pid_t) -> Bool = { [36, 37, 40].contains($0) }
+    let o = orphans(procs, jobs: [20], detached: { $0 != 40 }, terminal: tty, uid: 501, me: 60)
     precondition(o == [10, 11, 12, 70, 80, 81, 90])
-    precondition(orphans(procs, jobs: [], detached: { _ in false }, uid: 501, me: 60).isEmpty)  // before the first job list
+    precondition(orphans(procs, jobs: [20], detached: { $0 != 40 }, terminal: { _ in false }, uid: 501, me: 60).isSuperset(of: [35, 36, 37]))
+    precondition(orphans(procs, jobs: [], detached: { _ in false }, terminal: tty, uid: 501, me: 60).isEmpty)  // before the first job list
     func g(_ name: String, _ isApp: Bool, _ pids: [pid_t], leftover: Bool = false) -> Group {
         Group(name: name, isApp: isApp, procs: pids.map { procs[$0]! }, leftover: leftover)
     }
@@ -152,5 +163,5 @@ func orphanTest() {
     let merged = run([g("Foo", true, [30, 10, 11, 12]), g("node", false, [20])])
     precondition(pids(merged["node"]) == [10, 11, 12, 20] && !merged["node"]!.orphan && pids(merged["Foo"]) == [30])
     precondition(run([g("Foo", true, [80, 81])])["Foo"] == nil)  // emptied: gone
-    precondition(!detached(getpid(), before: .distantPast) && !detached(-5, before: .distantFuture))
+    precondition(!detached(getpid(), before: .distantPast) && !detached(-5, before: .distantFuture) && !hasTerminal(-5))
 }
