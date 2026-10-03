@@ -154,13 +154,16 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func send(_ a: Alert) {
+    private func send(_ a: Alert) { Self.center?.add(Self.request(a)) }
+
+    /// The notification of `a`. Apart from sending it: --drive builds it with no permission asked.
+    static func request(_ a: Alert) -> UNNotificationRequest {
         let c = UNMutableNotificationContent()
         c.title = a.title
         c.body = a.body
         if a.stop, let g = a.group { c.categoryIdentifier = "leftover"; c.userInfo = ["group": g] }
         // One per kind and group: a new one takes the place of the old one in Notification Center.
-        Self.center?.add(UNNotificationRequest(identifier: "\(a.kind)|\(a.group ?? "")", content: c, trigger: nil))
+        return UNNotificationRequest(identifier: "\(a.kind)|\(a.group ?? "")", content: c, trigger: nil)
     }
 
     /// A toggle turned on: ask macOS now. The first time it shows its prompt, after that it

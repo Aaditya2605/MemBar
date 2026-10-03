@@ -14,6 +14,8 @@
 #   $AppMem --test                          self-check of the pure rules (prints ok)
 #   $AppMem --snapshot OUT.png [QUERY]      debug builds: the panel as a PNG
 #   $AppMem --snapshot-details OUT.png GROUP [QUERY]   debug builds: the Details window as a PNG
+#   .build/debug/AppMem --drive OUTDIR      the real app through a scripted run: a PNG per step, drive.log
+#                                           (the bare debug binary only: an .app has the installed app's settings)
 #   $AppMem --help, -h                      every flag
 #
 #   open appmem://report       copy a Markdown report (also appmem://open, appmem://refresh)

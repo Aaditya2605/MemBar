@@ -40,6 +40,10 @@ final class Nav: ObservableObject {
     @Published var expanded: Set<String> = []  // group ids
     @Published var all: Set<String> = []  // groups that show all their processes, not the top 10
     var focusList = {}  // the Panel sets it: after a click, keys act on the clicked line
+    #if DEBUG
+    static weak var shown: Nav?  // the panel's: --drive checks what its keys did (Drive.swift)
+    init() { Nav.shown = self }
+    #endif
 
     func click(_ id: RowID) { sel = id; focusList() }
     func toggle(_ group: String) { if expanded.remove(group) == nil { expanded.insert(group) } }

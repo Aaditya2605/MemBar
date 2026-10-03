@@ -790,5 +790,18 @@ func selfTest() {
         precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == .bad("--snapshot-details works only in debug builds"))
         #endif
     }
+
+    do {  // --drive (Drive.swift): the flag, and the notification that each alert builds
+        #if DEBUG
+        precondition(parseArgs(["--drive", "/tmp/d"]) == nil && parseArgs(["--drive"]) == .bad("--drive needs OUTDIR"))
+        #else
+        precondition(parseArgs(["--drive", "/tmp/d"]) == .bad("--drive works only in debug builds"))
+        #endif
+        let left = Alerts.request(Alert(kind: .leftover, group: "Cursor", stop: true, title: "Leftover: Cursor", body: "b"))
+        precondition(left.identifier == "leftover|Cursor" && left.content.title == "Leftover: Cursor" && left.content.body == "b")
+        precondition(left.content.categoryIdentifier == "leftover" && left.content.userInfo["group"] as? String == "Cursor")
+        let hot = Alerts.request(Alert(kind: .pressure, title: "t", body: "b"))  // no group, no Stop
+        precondition(hot.identifier == "pressure|" && hot.content.categoryIdentifier.isEmpty && hot.content.userInfo.isEmpty)
+    }
     print("ok")
 }

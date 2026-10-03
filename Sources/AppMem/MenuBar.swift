@@ -130,6 +130,13 @@ extension Delegate {
         // With the panel closed the numbers can be a minute old. This scan lands while the menu
         // is open and can find more leftovers: Stop All stops only the ones this menu named.
         model.refresh()
+        item.menu = quickMenu()
+        item.button?.performClick(nil)  // the menu opens under the item, with the menu bar highlight
+        item.menu = nil  // else a left click opens the menu too, not the panel
+    }
+
+    /// The quick menu's items. Apart from showing it: --drive builds it without tracking it.
+    func quickMenu() -> NSMenu {
         let menu = NSMenu()
         @discardableResult func add(_ title: String, _ action: Selector?, key: String = "") -> NSMenuItem {
             let i = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
@@ -147,9 +154,7 @@ extension Delegate {
         add("Refresh", #selector(refreshNow), key: "r")
         menu.addItem(.separator())
         add("Quit AppMem", #selector(NSApplication.terminate(_:)), key: "q").target = NSApp
-        item.menu = menu
-        item.button?.performClick(nil)  // the menu opens under the item, with the menu bar highlight
-        item.menu = nil  // else a left click opens the menu too, not the panel
+        return menu
     }
 
     // Async: the menu, or the launch, is not done yet; a popover shown in it can close at once.

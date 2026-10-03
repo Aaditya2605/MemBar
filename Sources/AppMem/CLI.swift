@@ -19,6 +19,8 @@ private let usage = """
       --snapshot OUT.png [QUERY]  debug builds: the panel as a PNG
       --snapshot-details OUT.png GROUP [QUERY]
                                   debug builds: the Details window of GROUP as a PNG
+      --drive OUTDIR              debug builds: run the real app through a scripted
+                                  scenario; a PNG per step and drive.log in OUTDIR
       --help, -h                  this text
 
     """
@@ -26,7 +28,7 @@ private let usage = """
 enum CLICommand: Equatable { case help, json(cpu: Bool), leftovers, stop(names: [String], dryRun: Bool), bad(String) }
 
 /// Every flag, also the ones main.swift reads (--list, --test, --snapshot).
-private let flags: Set = ["--help", "--json", "--cpu", "--leftovers", "--stop", "--dry-run", "--list", "--test", "--snapshot", "--snapshot-details"]
+private let flags: Set = ["--help", "--json", "--cpu", "--leftovers", "--stop", "--dry-run", "--list", "--test", "--snapshot", "--snapshot-details", "--drive"]
 
 /// The command in `args` (argv without the program); nil when there is none, so
 /// main.swift runs --snapshot or starts the menu bar app. Any other "--" flag is an
@@ -39,9 +41,11 @@ func parseArgs(_ args: [String], uid: uid_t = getuid()) -> CLICommand? {
     #if DEBUG
     if args.last == "--snapshot" { return .bad("--snapshot needs OUT.png") }
     if let i = args.firstIndex(of: "--snapshot-details"), i + 2 >= args.count { return .bad("--snapshot-details needs OUT.png GROUP") }
+    if args.last == "--drive" { return .bad("--drive needs OUTDIR") }
     #else
     if has.contains("--snapshot") { return .bad("--snapshot works only in debug builds") }
     if has.contains("--snapshot-details") { return .bad("--snapshot-details works only in debug builds") }
+    if has.contains("--drive") { return .bad("--drive works only in debug builds") }
     #endif
     if has.contains("--help") || has.contains("-h") { return .help }
     if has.contains("--json") { return .json(cpu: has.contains("--cpu")) }
