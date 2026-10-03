@@ -98,7 +98,7 @@ enum Freed {
         UserDefaults.standard.data(forKey: "recentActions").flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
     }
 
-    /// `how`: "Stop", "Stop All", "Auto-stop" or "Idle quit". The memory of the last scan:
+    /// `how`: "Stop", "Stop All", "Auto-stop", "Idle quit" or "Restart above 4 GB". The memory of the last scan:
     /// what the group held when it was stopped.
     static func record(_ gs: [Group], how: String) {
         guard !gs.isEmpty else { return }
@@ -196,7 +196,7 @@ struct FreedLine: View {
             Divider()
             Text("Freed \(fmt(Int64(bytes))) since \(d.formatted(Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? day : day.year()))")
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit().padding(.vertical, 4)
-                .help("Memory of the groups that Stop, Stop All, Auto-Stop and Quit When Idle ended, as it was at each stop. Settings > Recent Actions lists them.")
+                .help("Memory of the groups that Stop, Stop All, Auto-Stop, Quit When Idle and Restart When Above ended, as it was at each stop. Settings > Recent Actions lists them.")
         }
     }
 }

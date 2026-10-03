@@ -84,10 +84,10 @@ enum Actions {
     }
 
     /// `then` on the main thread once `app` has exited, waited for off the main thread. Never
-    /// if it still runs after 10 s: the user may have cancelled the quit.
-    static func whenQuit(_ app: NSRunningApplication, then: @escaping () -> Void) {
+    /// if it still runs after `within` s: the user may have cancelled the quit.
+    static func whenQuit(_ app: NSRunningApplication, within: TimeInterval = 10, then: @escaping () -> Void) {
         DispatchQueue.global().async {
-            let end = Date() + 10
+            let end = Date() + within
             while !app.isTerminated, Date() < end { Thread.sleep(forTimeInterval: 0.2) }
             if app.isTerminated { DispatchQueue.main.async(execute: then) }
         }
@@ -127,6 +127,7 @@ struct GroupMenu: View {
             .disabled(!a.quit)
         if let app, a.restart { Button("Restart \(g.name)") { Actions.restart(g, app) } }
         if a.restart && !g.leftover { QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app
+        if let app, a.restart && !g.leftover { RuleMenus(g: g, app: app, signals: a.pause || a.resume) }  // Rules.swift
         Divider()
         if a.resume { Button("Resume") { Actions.send(SIGCONT, g.procs.filter(\.stopped), in: g) } }
         if a.pause || !a.resume {
