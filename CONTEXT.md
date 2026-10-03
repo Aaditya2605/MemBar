@@ -4,7 +4,7 @@ AppMem is a macOS menu bar app. It shows memory per app, not per process, and it
 
 Status: v1 built 2026-09-26 (`./build.sh`, then `open build/AppMem.app`). On 2026-10-03 the branch `claude/appmem-feature-expansion-544237` adds: CPU column, icons, sort, search, right-click actions, pressure, history, settings, ports, CLI flags, idle apps, remembered owners, process tree, notifications, auto rules, menu bar modes, keyboard, simulator devices, Details window, mark, orphans. CLI prototype: `~/projects/scripts/appmem.py`.
 - Tested by asserts: `AppMem --test` checks the pure rules: grouping, leftovers, remembered owners, respawns, orphans, idle apps and age, auto-stop and Quit When Idle, alerts, mark, growth, CLI flags, keys, simulator lines, report and URLs.
-- Tested by snapshots: `AppMem --snapshot OUT.png [QUERY]` and `--snapshot-details OUT.png GROUP` (debug builds) draw the real panel and the Details window off screen with live data. `CROWD=1` adds made-up groups with each badge, `HISTORY=1` a chart, `MARK=1` a mark, `DARK=1` or `DARK=0` the appearance.
+- Tested by snapshots: `AppMem --snapshot OUT.png [QUERY]` and `--snapshot-details OUT.png GROUP` (debug builds) draw the real panel and the Details window off screen with live data. `CROWD=1` adds made-up groups with each badge, `HISTORY=1` made-up history (sparklines, growing badge, Details chart), `MARK=1` a mark, `DARK=1` or `DARK=0` the appearance.
 - Not yet clicked by a person: Stop, Stop All, Quit, Pause and Resume on real apps; the notification prompt and a notification's Stop; Launch at Login; auto-stop and Quit When Idle over real hours; simulator Shut Down; the quick menu, the keys and the `appmem://` URLs in the running app.
 
 ## Why
@@ -81,7 +81,7 @@ A booted iOS simulator device. The expanded "iOS Simulator" group shows a line p
 - Menu bar only. No Dock icon (`LSUIElement`).
 - The menu bar icon shows a dot: yellow for leftovers, orange for Warning pressure, red for Critical. Settings > Menu Bar Shows adds text: Icon Only (default), Leftover Size, RAM Used, Memory Pressure. Right-click opens a quick menu: Open, RAM and pressure, Stop All Leftovers, Copy Report, Refresh, Quit.
 - The panel lists groups with icon, CPU, memory and process count. Leftovers come first and are marked; then sort by name, processes, CPU, memory, or change since the mark. Search by group name, process name, PID or port. Each group expands to a process tree (top 10, or all), with the command line on hover and listening ports.
-- The header shows the pressure bar (click: Activity Monitor's breakdown), a RAM chart for the last hour, the waste total with Stop All, the mark, Refresh and the gear menu.
+- The header shows the pressure bar (click: Activity Monitor's breakdown), the waste total with Stop All, the mark, Refresh and the gear menu.
 - Each leftover and orphan has a **Stop** button:
   - App leftovers and orphans: SIGTERM to each process of this user in the group (SIGCONT too, so a paused one acts on it). After 3 s, SIGKILL for the ones that still run with the same PID and path.
   - iOS Simulator: `xcrun simctl shutdown` for each booted device, in its own device set.

@@ -17,7 +17,7 @@ func graphSamples(_ samples: [Sample]) -> [Sample] {
 }
 
 /// The line in a `size` image: the values over the full width, one value as a flat line.
-/// y from 0 to all the RAM (`top`), as the header chart: the height reads as how full, and
+/// y from 0 to all the RAM (`top`): the height reads as how full, and
 /// noise stays flat. Inset by half the 1 pt line, so 0 and full are not cut off, and on
 /// 0.5 pt steps, so a flat line is sharp at 2x.
 func graphPoints(_ ram: [Int64], top: Int64, size: CGSize) -> [CGPoint] {

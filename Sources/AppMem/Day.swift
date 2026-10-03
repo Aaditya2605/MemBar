@@ -1,11 +1,11 @@
 import AppKit
 import SwiftUI
 
-// The RAM history over 24 hours: on disk, so the chart has data at once after a restart; the
-// header chart's 1 h / 24 h range; Settings > Peaks Today. History keeps the last hour at one
+// The RAM history over 24 hours: on disk, so the Details chart, the sparklines and the growth
+// check have data at once after a restart; Settings > Peaks Today. History keeps the last hour at one
 // sample each 15 s; older samples fold into one point each 5 min (fold). The file is
 // ~/Library/Application Support/AppMem/history.json, written at most every 5 min and at quit.
-// UserDefaults key: "chartDay" (Bool: the chart shows 24 h).
+// UserDefaults key: "chartDay" (Bool: the Details chart shows 24 h).
 
 // MARK: - Pure rules
 
@@ -47,9 +47,6 @@ func peaks(_ samples: [Sample], since start: Date, n: Int = 5) -> [Peak] {
 
 /// A Peaks Today item: "Google Chrome: 3.20 GB at 2:05 PM".
 func peakLine(_ p: Peak) -> String { "\(p.name): \(fmt(p.mem)) at \(p.at.formatted(date: .omitted, time: .shortened))" }
-
-/// The chart's tooltip span: "45 min", then "2 h" past 90 min.
-func spanText(_ t: TimeInterval) -> String { t < 5400 ? mins(t) : "\(Int((t / 3600).rounded())) h" }
 
 /// history.json: the group ids once, then each point with its time in whole seconds since 1970,
 /// memory in MB, and its groups by their place in `ids`. Bytes and a name in each point made a
@@ -111,7 +108,7 @@ enum HistoryFile {
     static var readOnly = false  // --drive (Drive.swift): it reads the file, and leaves it as it was
     #endif
 
-    /// The Model's history at launch, so the chart has data at once. Also sets up the save at quit,
+    /// The Model's history at launch, so the charts have data at once. Also sets up the save at quit,
     /// of the last scan's history: so never in --snapshot, which does not scan.
     static func load() -> History {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
@@ -139,23 +136,6 @@ enum HistoryFile {
 }
 
 // MARK: - UI
-
-/// Header: the RAM chart over the last hour or the last 24 hours. The choice is kept.
-struct HistoryChart: View {
-    let history: History
-    @AppStorage("chartDay") private var day = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            RAMChart(samples: day ? history.older + history.samples : history.samples)
-            // Only once a range has a chart: the first minute's slot stays quiet. After a long quit the
-            // last hour can be empty while the 24 h are not, so it shows then.
-            if history.older.count + history.samples.count >= 2 {
-                RangePicker(day: $day).controlSize(.mini)  // DetailChart.swift: the Details header has it too
-            }
-        }
-    }
-}
 
 /// Settings > Peaks Today. `peaks`: read when the menu opens (see SettingsMenu).
 struct PeaksMenu: View {
@@ -234,5 +214,4 @@ func dayTest() {
     precondition(peaks([], since: t0).isEmpty && Peak(id: "A|B|true", mem: 0, at: t0).name == "A|B")
     precondition(peakLine(Peak(id: "Google Chrome|true", mem: 1200 * mb, at: t0)) == "Google Chrome: 1.17 GB at " + t0.formatted(date: .omitted, time: .shortened))
     precondition(History(samples: [Sample(at: Date(), ram: 0, swap: 0, groups: ["A|true": mb])]).peaksToday().map(\.id) == ["A|true"])
-    precondition(spanText(600) == "10 min" && spanText(3600) == "60 min" && spanText(5400) == "2 h" && spanText(86400) == "24 h")
 }

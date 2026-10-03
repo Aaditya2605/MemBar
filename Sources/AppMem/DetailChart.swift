@@ -38,7 +38,7 @@ func whenText(_ d: Date, now: Date = Date(), cal: Calendar = .current) -> String
     cal.isDate(d, inSameDayAs: now) ? d.formatted(date: .omitted, time: .shortened) : d.formatted(.dateTime.weekday(.abbreviated).hour().minute())
 }
 
-/// 1 h / 24 h: the panel's header chart and the Details header share the choice ("chartDay").
+/// 1 h / 24 h in the Details header. The choice is kept ("chartDay").
 struct RangePicker: View {
     @Binding var day: Bool
 

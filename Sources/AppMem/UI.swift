@@ -166,7 +166,6 @@ struct Panel: View {
                 MarkLine(model: model)
                 IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys, groups: model.groups, slots: model.slots).font(.caption).foregroundStyle(.secondary)
-                HistoryChart(history: model.history)  // Day.swift: RAMChart over 1 h or 24 h
                 TextField("Search or filter: leftover, >1gb, :3000", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)

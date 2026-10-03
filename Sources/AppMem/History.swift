@@ -1,8 +1,9 @@
 import Charts
 import SwiftUI
 
-// RAM history for the last hour: the header chart, the "growing" badge and the
-// sparkline of an expanded group. Older samples fold into 24 h points; Day.swift saves
+// RAM history for the last hour: the "growing" badge, the sparkline of an expanded
+// group and the Details chart. No header chart: total RAM used stays flat on macOS (it
+// compresses and swaps first), and it cannot say which app to act on. Older samples fold into 24 h points; Day.swift saves
 // both to disk and loads them at launch.
 
 struct Sample {
@@ -33,7 +34,7 @@ struct History {
         for s in samples.prefix(old) { fold(&older, s) }
         samples.removeFirst(old)
         // Each add, not only when a sample folds: after a restart the last hour is short, nothing
-        // folds for up to an hour, and the "24 h" chart would grow to 25 h.
+        // folds for up to an hour, and the "24 h" Details chart would grow to 25 h.
         older.removeFirst(older.prefix { now.timeIntervalSince($0.at) > 86400 }.count)
     }
 
@@ -75,43 +76,6 @@ func growthText(_ points: [(at: Date, mem: Int64)]) -> String? {
 
 func mins(_ t: TimeInterval) -> String { "\(max(1, Int((t / 60).rounded()))) min" }
 
-/// Header: RAM used (area) and swap (line, when there is any), from 0 to all the RAM,
-/// so the height reads as "how full".
-struct RAMChart: View {
-    let samples: [Sample]
-
-    var body: some View {
-        if let a = samples.first, let b = samples.last, samples.count >= 2 {
-            let swap = samples.contains { $0.swap > 0 }
-            let top = max(Int64(ProcessInfo.processInfo.physicalMemory), samples.map(\.swap).max() ?? 0)
-            let ram = samples.map(\.ram)
-            let label = "RAM used in the last \(spanText(b.at.timeIntervalSince(a.at))): lowest \(fmt(ram.min()!)), highest \(fmt(ram.max()!))"
-                + (swap ? ". Swap: highest \(fmt(samples.map(\.swap).max()!))" : "")
-            Chart(samples, id: \.at) { s in
-                AreaMark(x: .value("Time", s.at), y: .value("RAM", Double(s.ram)))
-                    .foregroundStyle(.linearGradient(colors: [.accentColor.opacity(0.35), .accentColor.opacity(0.05)],
-                                                     startPoint: .top, endPoint: .bottom))
-                LineMark(x: .value("Time", s.at), y: .value("RAM", Double(s.ram)), series: .value("Series", "RAM"))
-                    .foregroundStyle(Color.accentColor).lineStyle(StrokeStyle(lineWidth: 1))
-                if swap {
-                    LineMark(x: .value("Time", s.at), y: .value("Swap", Double(s.swap)), series: .value("Series", "Swap"))
-                        .foregroundStyle(.orange).lineStyle(StrokeStyle(lineWidth: 1))
-                }
-            }
-            .chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
-            .chartXScale(domain: a.at...b.at)
-            .chartYScale(domain: 0...Double(top))
-            .frame(height: 36)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(label)
-            .help(label)
-        } else {  // same height and no words: the list does not jump when the second sample comes,
-            // and for the minute after launch the slot stays quiet (closed, a sample comes each 60 s)
-            Color.clear.frame(height: 36).accessibilityHidden(true)
-        }
-    }
-}
-
 /// Expanded group: its memory history, from 0 so that a leak looks steep and noise flat.
 struct Sparkline: View {
     let points: [(at: Date, mem: Int64)]
@@ -142,7 +106,7 @@ struct Sparkline: View {
 #if DEBUG
 extension History {
     /// `HISTORY=1 AppMem --snapshot ...`: an hour of made-up samples around the live
-    /// numbers, so the chart, badge and sparkline show without an hour of waiting.
+    /// numbers, so the badge, sparklines and Details chart show without an hour of waiting.
     /// The largest group grows from half its size, so it gets the badge.
     static func demo(_ groups: [Group], sys: SysMem) -> History {
         var h = History()
