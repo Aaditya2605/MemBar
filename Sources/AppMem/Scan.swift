@@ -618,5 +618,6 @@ func selfTest() {
         precondition(logLine(Freed.Entry(at: t0, name: "Cursor", mem: 800 << 20, how: "Auto-stop")).hasSuffix("  Auto-stop: Cursor, 800 MB"))
     }
     recallTest()
+    alertsTest()
     print("ok")
 }

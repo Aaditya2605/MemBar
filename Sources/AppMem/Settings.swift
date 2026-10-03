@@ -57,6 +57,7 @@ struct SettingsMenu: View {
                 ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
             }
             MenuBarShowsPicker()  // MenuBar.swift
+            AlertsMenu()  // Alerts.swift
             Divider()
             Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
             Toggle("Show macOS Group", isOn: $showMacOS)
