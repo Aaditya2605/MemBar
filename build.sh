@@ -7,6 +7,10 @@
 #   open build/AppMem.app                            run it (menu bar only, no Dock icon)
 #   build/AppMem.app/Contents/MacOS/AppMem --test    self-check of the pure rules
 #   build/AppMem.app/Contents/MacOS/AppMem --list    groups as text, like appmem.py
+#   build/AppMem.app/Contents/MacOS/AppMem --help    every flag
+#   build/AppMem.app/Contents/MacOS/AppMem --json [--cpu]          groups, RAM and swap as JSON
+#   build/AppMem.app/Contents/MacOS/AppMem --leftovers             one per line; exit 1 if any
+#   build/AppMem.app/Contents/MacOS/AppMem --stop [NAME ...] [--dry-run]   stop leftovers
 set -euo pipefail
 
 cd "$(dirname "$0")"
