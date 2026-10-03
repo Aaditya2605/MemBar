@@ -10,6 +10,7 @@ final class Model: ObservableObject {
     @Published var sys = SysMem()
     @Published var history = History()
     @Published var mark = Mark.saved()  // Mark.swift; set it with setMark, which saves it
+    var slots: [String: Int] = [:]  // RAMBar.swift: the largest groups' colors, kept from scan to scan
     var markAsked = false  // markNow: the next scan with the panel open takes the mark
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
@@ -67,6 +68,7 @@ final class Model: ObservableObject {
             DispatchQueue.main.async {
                 // A group that is gone drops out: its old PIDs never match reused ones later.
                 self.stopped = self.stopped.filter { id, _ in g.contains { $0.id == id } }
+                self.slots = keepSlots(g, kept: self.slots)
                 self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
@@ -154,7 +156,7 @@ struct Panel: View {
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 MarkLine(model: model)
                 IdleLine(groups: model.groups)
-                PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
+                PressureBar(sys: model.sys, groups: model.groups, slots: model.slots).font(.caption).foregroundStyle(.secondary)
                 RAMChart(samples: model.history.samples)
                 TextField("Search apps, processes, PIDs or :ports", text: $query)
                     .textFieldStyle(.roundedBorder)
@@ -180,7 +182,7 @@ struct Panel: View {
                 LazyVStack(spacing: 0) {
                     let q = q, d = markDelta
                     ForEach(s) { g in
-                        Row(g: g, only: hits(g, q), points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }, nav: nav) {
+                        Row(g: g, only: hits(g, q), points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }, slot: model.slots[g.id], nav: nav) {
                             model.stopGroups([g])
                         }
                     }
@@ -263,6 +265,7 @@ struct Row: View {
     let only: [Proc]?  // search hits inside the group: show these, expanded
     var points: [(at: Date, mem: Int64)] = []  // memory history: growing badge, sparkline
     var change: (text: String, color: Color, help: String)?  // since the mark (Mark.swift)
+    var slot: Int?  // its color in the RAM bar (RAMBar.swift), for the 4 largest
     @ObservedObject var nav: Nav  // open or not, selected or not (Keys.swift)
     let stop: () -> Void
     var expanded: Bool { nav.expanded.contains(g.id) }
@@ -345,7 +348,7 @@ struct Row: View {
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit().fixedSize().help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
-                        Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
+                        Text(fmt(g.mem)).monospacedDigit().slotDot(slot).frame(minWidth: 62, alignment: .trailing)
                     }
                     .padding(.trailing, 10).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
                     .contentShape(Rectangle())
@@ -500,6 +503,7 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     model.groups = orphans.mark(model.groups, procs, open: true)
     if ProcessInfo.processInfo.environment["CROWD"] != nil { model.groups = Group.crowd + model.groups }
     model.sys = systemMem()
+    model.slots = keepSlots(model.groups, kept: [:])
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
     model.mark = ProcessInfo.processInfo.environment["MARK"] != nil ? .demo(model.groups, sys: model.sys) : nil  // never the saved one
     let view = NSHostingView(rootView: make(model))
