@@ -17,9 +17,9 @@ func topGroups(_ groups: [String: Int64]) -> [String: Int64] {
 
 /// Downsampling for the 24 h points: `s` joins the last point when both fall in the same 5 min of
 /// the clock (2:00 to 2:05), each number at its highest so that a peak stays; else it starts a new
-/// point. Points older than 24 h drop out.
+/// point. Points older than 24 h drop out in add() and init?(decoding:).
 /// ponytail: a point keeps the time of its first sample, so a peak's time can be up to 5 min early.
-func fold(_ older: inout [Sample], _ s: Sample, now: Date) {
+func fold(_ older: inout [Sample], _ s: Sample) {
     func slot(_ d: Date) -> Double { (d.timeIntervalSince1970 / 300).rounded(.down) }
     if let last = older.last, slot(last.at) == slot(s.at) {
         older[older.count - 1] = Sample(at: last.at, ram: max(last.ram, s.ram), swap: max(last.swap, s.swap),
@@ -27,7 +27,6 @@ func fold(_ older: inout [Sample], _ s: Sample, now: Date) {
     } else {
         older.append(Sample(at: s.at, ram: s.ram, swap: s.swap, groups: topGroups(s.groups)))
     }
-    older.removeFirst(older.prefix { now.timeIntervalSince($0.at) > 86400 }.count)
 }
 
 /// A group's highest memory in a stretch of history, and when.
@@ -92,7 +91,7 @@ extension History {
                                       uniquingKeysWith: max))  // not uniqueKeys: a damaged file must not trap
         }.filter { $0.at <= now && now.timeIntervalSince($0.at) <= 86400 }.sorted { $0.at < $1.at }
         var older: [Sample] = []
-        for s in all where now.timeIntervalSince(s.at) > 3600 { fold(&older, s, now: now) }
+        for s in all where now.timeIntervalSince(s.at) > 3600 { fold(&older, s) }
         self.init(samples: Array(all.filter { now.timeIntervalSince($0.at) <= 3600 }.suffix(Self.cap)), older: older)
     }
 }
@@ -178,11 +177,14 @@ func dayTest() {
 
     // Downsampling: one point each 5 min of the clock, each number at its highest, at its first sample's time.
     var o: [Sample] = []
-    for i in 0..<40 { fold(&o, s(Double(i) * 15, ram: 1000 + Int64(i), ["A|true": 200 + Int64(i % 7), "B|true": 60]), now: t0 + 600) }
+    for i in 0..<40 { fold(&o, s(Double(i) * 15, ram: 1000 + Int64(i), ["A|true": 200 + Int64(i % 7), "B|true": 60])) }
     precondition(o.map(\.at) == [t0, t0 + 300] && o.map(\.ram) == [1019 * mb, 1039 * mb] && o.map(\.swap) == [509 * mb, 519 * mb])
     precondition(o[0].groups == ["A|true": 206 * mb])  // B: under 100 MB
-    fold(&o, s(86401), now: t0 + 86401)  // 24 h later: the first point is older than 24 h
-    precondition(o.map(\.at) == [t0 + 300, t0 + 86401])
+    do {  // a restart with an empty last hour: nothing folds, but each add drops the points older than 24 h
+        var r = History(older: o)
+        r.add([], sys: SysMem(), at: t0 + 86401)
+        precondition(r.older.map(\.at) == [t0 + 300] && r.samples.count == 1)
+    }
     // From add: the samples that leave the last hour.
     var h = History()
     let big = [Group(name: "Big", isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/b", mem: 150 * mb)])]

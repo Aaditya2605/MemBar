@@ -30,8 +30,11 @@ struct History {
                               groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
         // Older than an hour, or past the cap: into the 24 h points. Oldest first: add only appends later times.
         let old = max(samples.prefix { now.timeIntervalSince($0.at) > 3600 }.count, samples.count - Self.cap)
-        for s in samples.prefix(old) { fold(&older, s, now: now) }
+        for s in samples.prefix(old) { fold(&older, s) }
         samples.removeFirst(old)
+        // Each add, not only when a sample folds: after a restart the last hour is short, nothing
+        // folds for up to an hour, and the "24 h" chart would grow to 25 h.
+        older.removeFirst(older.prefix { now.timeIntervalSince($0.at) > 86400 }.count)
     }
 
     /// One group's memory over time; it has no point when it was below 50 MB or not running.
