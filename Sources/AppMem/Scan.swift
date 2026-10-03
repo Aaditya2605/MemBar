@@ -8,6 +8,8 @@ struct Proc {
     let pid: pid_t, ppid: pid_t, uid: uid_t
     let path: String
     let mem: Int64  // physical footprint in bytes ("Memory" in Activity Monitor)
+    var cpuTime: UInt64 = 0  // user + system CPU time since start, in ns
+    var cpu: Double = 0  // % of one core since the previous scan
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -16,8 +18,10 @@ struct Group: Identifiable {
     let isApp: Bool  // a non-Apple app: only these can be leftovers
     var procs: [Proc] = []
     var leftover = false
+    var bundle: String?  // the app's .app folder, for its icon
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
+    var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
     var isSimulator: Bool { name == "iOS Simulator" }
 }
 
@@ -43,6 +47,12 @@ func appOf(_ path: String) -> (name: String, isApp: Bool) {
     }
     if !isApp { return ("macOS", false) }
     return (String((parts.last ?? "?").drop { $0 == "-" }), false)
+}
+
+/// The outermost `<X>.app` folder in `path`.
+func bundlePath(_ path: String) -> String? {
+    guard let r = path.range(of: ".app/") else { return path.hasSuffix(".app") ? path : nil }
+    return String(path[..<r.lowerBound]) + ".app"
 }
 
 /// Lower-case names of apps whose `<X>.app/Contents/MacOS/<exe>` runs.
@@ -91,9 +101,10 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t) -> [Group] {
     for p in procs.values {
         let top = owner(of: p.pid, responsible: responsible(p.pid), procs: procs)
         let topPath = procs[top]?.path ?? p.path
-        let (name, isApp) = appOf(topPath)
-        groups["\(name)|\(isApp)", default: Group(name: name, isApp: isApp)].procs.append(p)
-        if !topPath.contains(".appex/") { notExtension.insert("\(name)|\(isApp)") }
+        let (name, isApp) = appOf(topPath), key = "\(name)|\(isApp)"
+        groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
+        if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
+        if !topPath.contains(".appex/") { notExtension.insert(key) }
     }
     return groups.values.map { g in
         var g = g
@@ -103,6 +114,15 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t) -> [Group] {
         g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open)
         return g
     }.sorted { ($0.leftover ? 1 : 0, $0.mem) > ($1.leftover ? 1 : 0, $1.mem) }
+}
+
+/// CPU % of one core for each process: its CPU time since the previous scan over
+/// the wall time. A PID that is new or reused (less CPU time than before) gets 0.
+func addCPU(_ procs: inout [pid_t: Proc], prev: [pid_t: UInt64], seconds: Double) {
+    guard seconds > 0 else { return }
+    for (pid, p) in procs {
+        if let t = prev[pid], p.cpuTime >= t { procs[pid]!.cpu = Double(p.cpuTime - t) / 1e9 / seconds * 100 }
+    }
 }
 
 /// top's MEM column: "1241M", "1.5G+", "512K".
@@ -175,6 +195,9 @@ func topMem() -> [pid_t: Int64] {
     return out
 }
 
+// rusage CPU times are in mach ticks (on Apple Silicon 1 tick = 125/3 ns).
+private let nsPerTick: Double = { var i = mach_timebase_info(); mach_timebase_info(&i); return Double(i.numer) / Double(i.denom) }()
+
 private let host = mach_host_self()  // once: each call adds a port reference
 
 /// RAM in use as Activity Monitor counts "Memory Used" (app + wired + compressed),
@@ -204,7 +227,8 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
         } == 0
         procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: path(of: pid, comm: comm(s)),
-                          mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0)
+                          mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0,
+                          cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0)
     }
     return procs
 }
@@ -262,6 +286,8 @@ func selfTest() {
     precondition(appOf("launchd_sim") == ("iOS Simulator", false))
     precondition(appOf("kernel_task") == ("kernel_task", false))
     precondition(appOf("/Library/Application Support/X") == ("X", false))  // X must be a folder
+    precondition(bundlePath("/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/C") == "/Applications/Claude.app")
+    precondition(bundlePath("/opt/homebrew/bin/node") == nil && bundlePath("/Applications/X.app") == "/Applications/X.app")
 
     let open = openApps(["/Applications/Claude.app/Contents/MacOS/Claude", "/usr/bin/top",
                          "/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper"])
@@ -294,5 +320,9 @@ func selfTest() {
     precondition(byName["iOS Simulator"]!.leftover && !byName["Weather"]!.leftover && !byName["macOS"]!.leftover)
     precondition(!byName["WhatsApp"]!.leftover && byName["WhatsApp"]!.procs.map(\.pid) == [50, 51])
     precondition(groups.map(\.name) == ["Cursor", "iOS Simulator", "Claude", "WhatsApp", "Weather", "macOS"])
+    var cp = procs
+    cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
+    addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
+    precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
     print("ok")
 }
