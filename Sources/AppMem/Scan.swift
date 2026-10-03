@@ -451,6 +451,21 @@ func selfTest() {
     precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
                  && othersHelp(byName["Cursor"]!, uid: 501) == "")
 
+    do {  // keyboard: the next selection, the selection after a refresh, keys that type, Stop
+        let a = RowID(group: "A"), a1 = RowID(group: "A", pid: 1), b = RowID(group: "B"), ids = [a, a1, b]
+        precondition(move(nil, in: ids, by: 1) == a && move(nil, in: ids, by: -1) == b && move(nil, in: [], by: 1) == nil)
+        precondition(move(a, in: ids, by: 1) == a1 && move(a1, in: ids, by: 1) == b && move(b, in: ids, by: 1) == b)  // stops at the end
+        precondition(move(a, in: ids, by: -1) == a && move(b, in: ids, by: -1) == a1 && move(RowID(group: "gone"), in: ids, by: 1) == a)
+        precondition(kept(a1, in: ids) == a1 && kept(b, in: [b, a]) == b)  // by id: a reorder keeps it
+        precondition(kept(a1, in: [a, b]) == a && kept(RowID(group: "B", pid: 9), in: [a]) == nil && kept(nil, in: ids) == nil)
+        precondition(types("a") && types("C") && types(":") && types("3") && types("é"))
+        precondition(!types("") && !types(" ") && !types("\r") && !types("\t") && !types("\u{1b}") && !types("\u{7f}") && !types("\u{F701}"))
+        let cursor = byName["Cursor"]!, sim = byName["iOS Simulator"]!
+        precondition(canStop(cursor, uid: 501) && !canStop(cursor, uid: 502) && canStop(sim, uid: 502) && !canStop(byName["Claude"]!, uid: 501))
+        let many = (1...12).map { Proc(pid: pid_t($0), ppid: 1, uid: 501, path: "/x", mem: 1) }
+        precondition(procLines(many, all: false).count == 10 && procLines(many, all: true).count == 12)
+    }
+
     // Settings: refresh choices, the ignore list, the list filters
     precondition(refreshSeconds(2) == 2 && refreshSeconds(5) == 5 && refreshSeconds(0) == 3 && refreshSeconds(-1) == 3)
     let ig = ignoring(groups, ["Cursor"])
