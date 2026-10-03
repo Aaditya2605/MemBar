@@ -666,6 +666,12 @@ func selfTest() {
         let c2 = leftoverClock(again, since: c1, now: t0 + 20 * m)
         precondition(c2["Cursor|true"] == nil && leftoverClock(groups, since: c2, now: t0 + 21 * m)["Cursor|true"] == t0 + 21 * m)
         precondition(stoppable(byName["iOS Simulator"]!, uid: 7) && stoppable(byName["Cursor"]!, uid: 501) && !stoppable(byName["Cursor"]!, uid: 502))
+        // Stop again before the rescan (double-click, Stop All, Alerts + auto-stop): acted on and counted once.
+        let cur = byName["Cursor"]!, done = [cur.id: Set<pid_t>([10, 11])]
+        var exiting = cur, back2 = cur
+        exiting.procs.removeFirst()  // PID 10 is gone, 11 still exits: the same Stop
+        back2.procs.append(p(12, 1, "/x", 1).1)  // a new PID (a respawn): a new Stop
+        precondition(notStopped([cur], [:]).count == 1 && notStopped([cur, exiting], done).isEmpty && notStopped([back2], done).count == 1)
         // A server from VS Code's terminal (nohup), kept in its group by Recall after VS Code quit: by hand only.
         let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", node = "/opt/homebrew/bin/node"
         let kept = group(Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(61, 1, node, 300), p(62, 61, "/opt/homebrew/bin/esbuild", 20)]),

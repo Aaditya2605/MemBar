@@ -26,6 +26,13 @@ func hours(_ minutes: Int) -> String { "\(minutes / 60) hour\(minutes == 60 ? ""
 /// What Stop acts on: the simulator (simctl), or a group with a process of this user.
 func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.isSimulator || g.procs.contains { $0.uid == uid } }
 
+/// The groups a Stop still acts on: not one whose processes all were in its last Stop (a
+/// double-click or Stop All before the rescan, Alerts and auto-stop in one scan, a slow
+/// exit), so the freed total and the log count it once. A respawn has new PIDs.
+func notStopped(_ gs: [Group], _ stopped: [String: Set<pid_t>]) -> [Group] {
+    gs.filter { !Set($0.procs.map(\.pid)).isSubset(of: stopped[$0.id] ?? []) }
+}
+
 /// When each leftover was first seen as one, by group id: AppMem's own clock, not process
 /// age, kept only while auto-stop is on (Auto.check), so a fresh launch or auto-stop turned
 /// on never stops at once. A group that is not a leftover in this scan (it exited, its app

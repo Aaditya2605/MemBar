@@ -23,6 +23,7 @@ final class Model: ObservableObject {
     private var recall = Recall()  // queue only
     private var orphans = Orphans()  // queue only
     private var watches: [NSKeyValueObservation] = []
+    private var stopped: [String: Set<pid_t>] = [:]  // main only: Group.id → the PIDs of its last Stop (notStopped)
 
     init() {
         // Settings apply at once, also an ignore list that the right-click menu writes.
@@ -64,6 +65,8 @@ final class Model: ObservableObject {
             let g = orphans.mark(ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), procs, open: open)
             let s = systemMem()
             DispatchQueue.main.async {
+                // A group that is gone drops out: its old PIDs never match reused ones later.
+                self.stopped = self.stopped.filter { id, _ in g.contains { $0.id == id } }
                 self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
@@ -73,6 +76,9 @@ final class Model: ObservableObject {
 
     /// Row's Stop, Stop All and auto-stop: stop, then watch the groups for a respawn (Recall).
     func stopGroups(_ gs: [Group], how: String = "Stop") {
+        let gs = notStopped(gs, stopped)
+        guard !gs.isEmpty else { return }
+        gs.forEach { stopped[$0.id] = Set($0.procs.map(\.pid)) }
         gs.forEach(stop)
         Freed.record(gs.filter { stoppable($0) }, how: how)
         queue.async { [self] in gs.forEach { recall.didStop($0) } }
