@@ -324,5 +324,13 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+    precondition(ago(20) == "1 min" && ago(45 * 60) == "45 min" && ago(3 * 3600 + 3599) == "3 h" && ago(49 * 3600) == "2 d")
+    let now = Date(), h: TimeInterval = 3600, claude = byName["Claude"]!  // open, 1300 MB
+    precondition(idleTime(claude, lastFront: now - 2 * h, now: now) == 2 * h)
+    precondition(idleTime(claude, lastFront: now - h, now: now) == nil && idleTime(claude, lastFront: nil, now: now) == nil)
+    precondition(idleTime(byName["Cursor"]!, lastFront: now - 3 * h, now: now) == nil)  // leftover
+    precondition(idleTime(byName["Weather"]!, lastFront: now - 3 * h, now: now) == nil)  // 30 MB
+    precondition(idleTime(Group(name: "macOS", isApp: false, procs: claude.procs), lastFront: now - 3 * h, now: now) == nil)
+    precondition(started(getpid())!.timeIntervalSinceNow < 0 && started(-5) == nil)
     print("ok")
 }

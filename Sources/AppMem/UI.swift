@@ -88,6 +88,7 @@ struct Panel: View {
                     Text("Apps \(fmt(model.total))").help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                IdleLine(groups: model.groups)
                 TextField("Search apps, processes or PIDs", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -170,6 +171,7 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        UsageBadge(g: g)
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -180,6 +182,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")")
+                .accessibilityValue(Usage.note(g)?.help ?? "")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -229,6 +232,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: Panel(model: model))
         model.onUpdate = { [weak self] in self?.updateIcon() }
+        Usage.start()
         model.schedule()
         model.refresh()
     }
