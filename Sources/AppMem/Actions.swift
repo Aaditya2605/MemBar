@@ -156,8 +156,5 @@ struct ProcMenu: View {
 
 extension Model {
     /// The header's Stop All: Stop for each leftover, with Stop's own checks.
-    func stopAll() {
-        groups.filter(\.leftover).forEach(stop)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { self.refresh() }
-    }
+    func stopAll() { stopGroups(groups.filter(\.leftover)) }
 }

@@ -16,7 +16,7 @@ func refreshSeconds(_ stored: Int) -> TimeInterval { [2, 3, 5].contains(stored) 
 func ignoring(_ groups: [Group], _ ignored: [String]) -> [Group] {
     groups.map { g in
         var g = g
-        if g.leftover && ignored.contains(g.name) { g.leftover = false; g.ignored = true }
+        if g.leftover && ignored.contains(g.name) { g.leftover = false; g.ignored = true; g.respawns = nil }
         return g
     }
 }

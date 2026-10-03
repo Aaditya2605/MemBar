@@ -22,6 +22,7 @@ struct Group: Identifiable {
     var leftover = false
     var bundle: String?  // the app's .app folder, for its icon
     var ignored = false  // a leftover that ignoring() unflagged: its app is still not open
+    var respawns: String?  // it came back after Stop: why (see Recall)
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -96,14 +97,14 @@ func owner(of pid: pid_t, responsible: pid_t, procs: [pid_t: Proc]) -> pid_t {
     return top
 }
 
-/// Groups sorted by memory, leftovers first.
-func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t) -> [Group] {
+/// Groups sorted by memory, leftovers first. `owners`: remembered app owners (Recall).
+func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:]) -> [Group] {
     let open = openApps(procs.values.lazy.map(\.path))
     var groups: [String: Group] = [:]
     var notExtension: Set<String> = []  // groups with a process that no app extension owns
     for p in procs.values {
         let top = owner(of: p.pid, responsible: responsible(p.pid), procs: procs)
-        let topPath = procs[top]?.path ?? p.path
+        let topPath = ownerPath(p, top: top, procs: procs, owners: owners)
         let (name, isApp) = appOf(topPath), key = "\(name)|\(isApp)"
         groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
         if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
@@ -448,5 +449,9 @@ func selfTest() {
     precondition(ig[0].ignored && !ig[1].ignored && idleTime(ig[0], lastFront: now - 3 * h, now: now) == nil)
     precondition(idleTime(ignoring([claude], ["Claude"])[0], lastFront: now - 2 * h, now: now) == 2 * h)
     precondition(ignoring(groups, ["Claude"]).allSatisfy { !$0.ignored })  // open: nothing to unflag
+    var back = groups
+    back[0].respawns = "x"  // Cursor came back after Stop: the respawn icon is a badge too
+    precondition(ignoring(back, ["Cursor"])[0].respawns == nil && ignoring(back, [])[0].respawns == "x")
+    recallTest()
     print("ok")
 }

@@ -15,6 +15,7 @@ final class Model: ObservableObject {
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
     private var ports: [pid_t: [UInt16]] = [:], portsAt = Date.distantPast  // queue only
+    private var recall = Recall()  // queue only
     private var watches: [NSKeyValueObservation] = []
 
     init() {
@@ -48,14 +49,17 @@ final class Model: ObservableObject {
             addPorts(&procs, ports)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
-            let g = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
+            let g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
             DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate() }
         }
     }
 
-    func stopGroup(_ g: Group) {
-        stop(g)
+    /// Row's Stop and Stop All: stop, then watch the groups for a respawn (Recall).
+    func stopGroups(_ gs: [Group]) {
+        gs.forEach(stop)
+        queue.async { [self] in gs.forEach { recall.didStop($0) } }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { self.refresh() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 55) { self.refresh() }  // a respawn shows within 60 s
     }
 }
 
@@ -134,7 +138,7 @@ struct Panel: View {
                     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
                     ForEach(shown) { g in
                         let hits = q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q)
-                        Row(g: g, only: hits, points: model.history.points(g.id)) { model.stopGroup(g) }
+                        Row(g: g, only: hits, points: model.history.points(g.id)) { model.stopGroups([g]) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -205,6 +209,10 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        if let why = g.respawns {  // an icon: a second word would squeeze the name
+                            Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
+                                .help(why).accessibilityLabel("Respawns")
+                        }
                         if paused {
                             Text("paused").font(.caption2.bold()).foregroundStyle(.secondary)
                                 .help("Paused: its processes do not run. Right-click to resume.")
@@ -226,7 +234,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, Usage.note(g)?.help].compactMap { $0 }.joined(separator: ". "))
+                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help].compactMap { $0 }.joined(separator: ". "))
                 .help(othersHelp(g))
                 if g.leftover {
                     Button("Stop", action: stop)
