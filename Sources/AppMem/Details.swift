@@ -123,8 +123,16 @@ struct DetailsView: View {
             .width(min: 90, ideal: 150)
             TableColumn("PID", value: \.p.pid) { num(String($0.p.pid)) }.width(46)
             TableColumn("User", value: \.user) { Text($0.user).lineLimit(1).help($0.user) }.width(min: 44, ideal: 80, max: 80)
-            TableColumn("CPU", value: \.p.cpu) { num(cpu($0.p.cpu)).help("% of one core since the last scan") }
-                .width(46)
+            SwiftUI.Group {  // a table takes 10 columns at most, a group counts as one
+                TableColumn("CPU", value: \DetailRow.p.cpu) { num(cpu($0.p.cpu)).help("% of one core since the last scan") }
+                    .width(46)
+                TableColumn("Power", value: \DetailRow.p.io.power) { r in
+                    num(watts(r.p.io.power)).help(r.p.io.start == 0 ? "Not readable: it runs as another user"
+                        : "Energy its CPU work used since the last scan, per second, as macOS estimates it")
+                }
+                .width(56)
+                TableColumn("Disk", value: \DetailRow.p.io.disk) { num(diskText($0.p.io.disk)).help(diskHelp($0.p.io)) }.width(66)
+            }
             TableColumn("Memory", value: \.p.mem) { num(fmt($0.p.mem)) }.width(66)
             TableColumn("Peak", value: \.p.peak) { r in
                 num(r.p.peak > 0 ? fmt(r.p.peak) : "–")
@@ -180,8 +188,8 @@ enum Details {
     }
 
     private static func make() -> NSWindow {
-        // 900 wide: ten columns with 17 pt between each; at 760 the command line had no room.
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 480), styleMask: [.titled, .closable, .resizable],
+        // 1060 wide: twelve columns with 17 pt between each; at 760 (ten columns) the command line had no room.
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1060, height: 480), styleMask: [.titled, .closable, .resizable],
                          backing: .buffered, defer: true)
         w.isReleasedWhenClosed = false
         w.center()
@@ -204,7 +212,7 @@ enum Details {
 /// `AppMem --snapshot-details out.png GROUP [query]` (debug builds): the Details window's
 /// content with live data as a PNG. GROUP: a group name, any case.
 func snapshotDetails(to path: String, group: String, query: String) {
-    snapshot(to: path, size: NSSize(width: 900, height: 480)) { m in
+    snapshot(to: path, size: NSSize(width: 1060, height: 480)) { m in
         let g = m.groups.first { $0.name.lowercased() == group.lowercased() }
         return DetailsView(model: m, id: g?.id ?? "", name: g?.name ?? group, query: query)
     }
