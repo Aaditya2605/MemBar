@@ -49,7 +49,9 @@ enum Actions {
     static func send(_ sig: Int32, _ procs: [Proc], in g: Group) {
         for p in procs where maySignal(p, in: g) && same(p) {
             kill(p.pid, sig)
-            if sig == SIGTERM, p.stopped { kill(p.pid, SIGCONT) }  // a paused process acts on SIGTERM only once it runs
+            // A paused process acts on SIGTERM only once it runs. Always: p.stopped is from
+            // the last scan, so a Pause since then is not in it; SIGCONT does nothing to a running one.
+            if sig == SIGTERM { kill(p.pid, SIGCONT) }
         }
     }
 
@@ -67,7 +69,7 @@ enum Actions {
     /// SIGTERM or SIGKILL to the group's processes.
     static func quit(_ g: Group, _ app: NSRunningApplication?, force: Bool = false) {
         guard let app else { return send(force ? SIGKILL : SIGTERM, g.procs, in: g) }
-        send(SIGCONT, g.procs.filter(\.stopped), in: g)  // a paused app cannot answer
+        send(SIGCONT, g.procs, in: g)  // a paused app cannot answer; all, as stopped can be old
         _ = force ? app.forceTerminate() : app.terminate()
     }
 

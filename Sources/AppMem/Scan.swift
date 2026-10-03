@@ -266,7 +266,7 @@ func stop(_ g: Group) {
     let targets = g.procs.filter { $0.uid == getuid() && $0.pid > 1 && $0.pid != getpid() && same($0) }
     for p in targets {
         kill(p.pid, SIGTERM)
-        if p.stopped { kill(p.pid, SIGCONT) }  // paused (right-click): it acts on SIGTERM only once it runs
+        kill(p.pid, SIGCONT)  // paused (maybe since the scan): it acts on SIGTERM only once it runs
     }
     DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
         for p in targets where same(p) { kill(p.pid, SIGKILL) }
