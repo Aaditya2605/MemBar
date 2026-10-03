@@ -80,7 +80,9 @@ struct DetailChart: View {
                     }
                     .font(.callout).monospacedDigit()
                 }
-                .frame(width: 210, alignment: .leading)  // fixed: the chart must not shift as the numbers change width
+                // At least 210: the chart does not shift as the numbers change width. Wider, never cut, for
+                // a long peak time: "at Wed 12:40 PM" in a 12-hour clock.
+                .fixedSize().frame(minWidth: 210, alignment: .leading)
                 if let x {
                     chart(pts, now: now, span: day ? 86400 : 3600, top: x.hi)
                 } else {
@@ -93,13 +95,15 @@ struct DetailChart: View {
     }
 
     func row(_ name: String, _ value: String, _ note: String? = nil, help: String) -> some View {
+        // A GridRow gives its modifiers to each cell, as a Group, so it cannot combine them: the value
+        // cell reads the row, "Highest, 5.34 GB, at 08:50", one line for VoiceOver.
         GridRow {
-            Text(name).foregroundStyle(.secondary)
+            Text(name).foregroundStyle(.secondary).accessibilityHidden(true)
             Text(value).gridColumnAlignment(.trailing)
-            if let note { Text(note).foregroundStyle(.secondary) }
+                .accessibilityLabel(name).accessibilityValue([value, note].compactMap { $0 }.joined(separator: ", "))
+            if let note { Text(note).foregroundStyle(.secondary).accessibilityHidden(true) }
         }
-        .help(help)
-        .accessibilityElement(children: .combine)  // "Highest, 5.34 GB, at 08:50": one line for VoiceOver
+        .help(help)  // on each cell: the whole row shows it
     }
 
     /// `pts`: not empty. From 0, as the sparkline: a leak looks steep, noise flat. In MB or GB, so the
