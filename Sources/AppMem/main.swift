@@ -18,6 +18,9 @@ if let i = CommandLine.arguments.firstIndex(of: "--snapshot-details"), i + 2 < C
     snapshotDetails(to: a[i + 1], group: a[i + 2], query: a.dropFirst(i + 3).first ?? "")  // Details.swift
     exit(0)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--drive"), i + 1 < CommandLine.arguments.count {
+    Drive.start(CommandLine.arguments[i + 1])  // Drive.swift: its scenario runs once the real app below starts
+}
 #endif
 // getuid() is 0 under sudo: root's daemons would pass the "this user only" rules of Stop, Quit and Pause.
 if getuid() == 0 { fputs("AppMem: the menu bar app does not run as root: run it without sudo\n", stderr); exit(2) }

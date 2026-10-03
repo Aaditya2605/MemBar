@@ -13,8 +13,10 @@ final class Model: ObservableObject {
     var slots: [String: Int] = [:]  // RAMBar.swift: the largest groups' colors, kept from scan to scan
     var markAsked = false  // markNow: the next scan with the panel open takes the mark
     var onUpdate: () -> Void = {}
-    var panelOpen = false { didSet { schedule(); refresh() } }
-    var windowOpen = false { didSet { if windowOpen != oldValue { schedule(); refresh() } } }  // Details: scans as the panel does
+    // A new timer and a scan only when `open` changes. Details opened from the panel ran two scans at once
+    // for nothing, during its table's first layout, with AppKit's "reentrant NSTableView" warning (--drive).
+    var panelOpen = false { didSet { if panelOpen != oldValue, !windowOpen { schedule(); refresh() } } }
+    var windowOpen = false { didSet { if windowOpen != oldValue, !panelOpen { schedule(); refresh() } } }  // Details: scans as the panel does
     private var open: Bool { panelOpen || windowOpen }
     private var timer: Timer?
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
@@ -526,13 +528,18 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     window.setFrameOrigin(NSPoint(x: -20000, y: -20000))  // off screen, but ordered in:
     window.orderFrontRegardless()  // SwiftUI draws text only in a window that is ordered in
     RunLoop.main.run(until: Date() + 1)  // SwiftUI lays out on the run loop
+    writePNG(view, to: path)
+}
+
+/// `view` at 2x as a PNG: the snapshots, and --drive's windows (Drive.swift).
+func writePNG(_ view: NSView, to path: String) {
     // cacheDisplay misses SwiftUI's text layers; render the layer tree instead.
-    let w = Int(size.width) * 2, h = Int(size.height) * 2
+    let w = Int(view.bounds.width) * 2, h = Int(view.bounds.height) * 2
     guard let layer = view.layer, let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4,
         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
         let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return }
-    let dark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    let dark = view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     ctx.cgContext.setFillColor(CGColor(gray: dark ? 0.15 : 0.96, alpha: 1))
     ctx.cgContext.fill(CGRect(x: 0, y: 0, width: w, height: h))
     ctx.cgContext.translateBy(x: 0, y: CGFloat(h))  // layers are top-down here
