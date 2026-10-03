@@ -91,6 +91,7 @@ func isOpen(_ name: String, _ open: Set<String>) -> Bool {
 }
 
 func isLeftover(_ g: Group, open: Set<String>) -> Bool {
+    if g.isVM { return false }  // Containers.swift: its app's window is often closed on purpose
     if g.isSimulator {  // launchd_sim = a booted device; agents boot them with no window
         return !open.contains("simulator") && g.procs.contains { $0.name == "launchd_sim" }
     }
@@ -865,6 +866,7 @@ func selfTest() {
     do { agentsTest() }  // Agents.swift: a respawn's launch agent
     alertsTest()
     orphanTest()
+    do { containersTest() }  // Containers.swift: VM owners, docker stats lines
 
     do {  // Details window: the extra columns, search, summary, sort keys, the multi-selection menu
         precondition(userName(0) == "root" && userName(getuid()) == NSUserName() && userName(4_000_000) == "4000000")

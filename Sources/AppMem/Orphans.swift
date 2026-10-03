@@ -57,7 +57,8 @@ func orphaning(_ groups: [Group], _ orphans: Set<pid_t>, procs: [pid_t: Proc], i
         return appOf(t.path).name
     }
     var gs = groups
-    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator && !gs[i].isEmulator {
+    // Not out of a VM's group (Containers.swift): Stop on its tools would cut the VM off.
+    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator && !gs[i].isEmulator && !gs[i].isVM {
         let away = gs[i].procs.filter { orphans.contains($0.pid) }.map { ($0, name($0)) }
             .filter { !ignored.contains($0.1) && "\($0.1)|false" != gs[i].id }
         gs[i].procs.removeAll { p in away.contains { $0.0.pid == p.pid } }
