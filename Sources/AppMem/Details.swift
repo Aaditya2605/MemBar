@@ -10,15 +10,16 @@ import SwiftUI
 struct DetailRow: Identifiable {
     let p: Proc
     var user = "", threads = -1, start = Date.distantPast, command = ""
+    var name = ""  // its site or role, else its executable's name (Names.swift)
     var id: pid_t { p.pid }
     var portKey: Int { p.ports.first.map(Int.init) ?? Int.max }  // the Ports sort: no port after all ports
 }
 
 /// Reads the extra columns. Only for the group shown, only while the window is open
-/// (the table is built only then); threads only for this user's processes.
-func detailRow(_ p: Proc, me: uid_t = getuid()) -> DetailRow {
+/// (the table is built only then); threads only for this user's processes. `group`: its group's name.
+func detailRow(_ p: Proc, group: String, me: uid_t = getuid()) -> DetailRow {
     DetailRow(p: p, user: userName(p.uid), threads: p.uid == me ? threadCount(p.pid) ?? -1 : -1,
-              start: started(p.pid) ?? .distantPast, command: Args.of(p))
+              start: started(p.pid) ?? .distantPast, command: Args.of(p), name: Names.of(p, in: group))
 }
 
 /// PROC_PIDTASKINFO's thread count. nil for other users' processes: not readable without root.
@@ -44,10 +45,10 @@ func startedText(_ d: Date, now: Date = Date(), cal: Calendar = .current) -> Str
         : d.formatted(.dateTime.month(.abbreviated).day())
 }
 
-/// The window's search (`q` lower-cased and trimmed): the name, user or command line
-/// contains it, or the PID or a port is it.
+/// The window's search (`q` lower-cased and trimmed): the name, site or role, user or command
+/// line contains it, or the PID or a port is it.
 func detailMatch(_ r: DetailRow, _ q: String) -> Bool {
-    q.isEmpty || [r.p.name, r.user, r.command].contains { $0.lowercased().contains(q) }
+    q.isEmpty || [r.p.name, r.name, r.user, r.command].contains { $0.lowercased().contains(q) }
         || String(r.p.pid) == q || portMatch(r.p.ports, q)
 }
 
@@ -86,7 +87,7 @@ struct DetailsView: View {
 
     var body: some View {
         let g = model.groups.first { $0.id == id }, q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let rows = (g?.procs ?? []).map { detailRow($0) }.filter { detailMatch($0, q) }.sorted(using: sort)
+        let rows = (g?.procs ?? []).map { detailRow($0, group: name) }.filter { detailMatch($0, q) }.sorted(using: sort)
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(detailsSummary(rows.map(\.p), total: g?.procs.count ?? 0)).monospacedDigit()
@@ -113,9 +114,9 @@ struct DetailsView: View {
 
     func table(_ g: Group, _ rows: [DetailRow]) -> some View {
         Table(rows, selection: $selection, sortOrder: $sort) {
-            TableColumn("Name", value: \.p.name) { r in
+            TableColumn("Name", value: \.name) { r in
                 HStack(spacing: 4) {
-                    Text(r.p.name).lineLimit(1).truncationMode(.middle)
+                    Text(r.name).lineLimit(1).truncationMode(.middle)
                     if r.p.stopped { Text("paused").font(.caption.bold()).foregroundStyle(.secondary) }
                 }
                 .help(r.p.path)
