@@ -73,6 +73,9 @@ struct Panel: View {
                     Spacer()
                     if model.waste > 0 {
                         Text("Leftovers: \(fmt(model.waste))").foregroundStyle(.orange)
+                        Button("Stop All") { model.stopAll() }
+                            .controlSize(.small)
+                            .help("Stop every leftover: \(model.groups.filter(\.leftover).map(\.name).joined(separator: ", "))")
                     }
                     Button { model.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.borderless)
@@ -170,6 +173,10 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        if isPaused(g) {
+                            Text("paused").font(.caption2.bold()).foregroundStyle(.secondary)
+                                .help("Paused: its processes do not run. Right-click to resume.")
+                        }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -180,12 +187,14 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")")
+                .accessibilityValue(isPaused(g) ? "paused" : "")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
                         .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
                 }
             }
+            .contextMenu { GroupMenu(g: g) }
             if expanded || only != nil {
                 ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
                     HStack {
@@ -196,6 +205,8 @@ struct Row: View {
                         Text(fmt(p.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                     }
                     .font(.caption).foregroundStyle(.secondary).padding(.leading, 38)
+                    .contentShape(Rectangle())  // right-click in the gaps too
+                    .contextMenu { ProcMenu(p: p, g: g) }
                 }
             }
         }

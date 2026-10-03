@@ -10,6 +10,7 @@ struct Proc {
     let mem: Int64  // physical footprint in bytes ("Memory" in Activity Monitor)
     var cpuTime: UInt64 = 0  // user + system CPU time since start, in ns
     var cpu: Double = 0  // % of one core since the previous scan
+    var stopped = false  // SIGSTOP: paused by AppMem, a debugger or ctrl-Z in a shell
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -228,12 +229,16 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
         } == 0
         procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: path(of: pid, comm: comm(s)),
                           mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0,
-                          cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0)
+                          cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0,
+                          stopped: s.pbsi_status == SSTOP)
     }
     return procs
 }
 
 // MARK: - Stop
+
+// Same PID and same executable as in the scan, so a reused PID is left alone.
+func same(_ p: Proc) -> Bool { shortInfo(p.pid).map { path(of: p.pid, comm: comm($0)) == p.path } ?? false }
 
 /// App leftover: SIGTERM, then SIGKILL after 3 s for the ones that still run.
 /// Simulator: shut down the booted devices. Never the macOS group, never other users.
@@ -246,8 +251,6 @@ func stop(_ g: Group) {
         try? p.run()
         return
     }
-    // Same PID and same executable as in the scan, so a reused PID is left alone.
-    func same(_ p: Proc) -> Bool { shortInfo(p.pid).map { path(of: p.pid, comm: comm($0)) == p.path } ?? false }
     let targets = g.procs.filter { $0.uid == getuid() && $0.pid > 1 && $0.pid != getpid() && same($0) }
     for p in targets { kill(p.pid, SIGTERM) }
     DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
@@ -324,5 +327,25 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+    do {  // right-click actions: who may get a signal, which items apply
+        let cursor = byName["Cursor"]!, weather = byName["Weather"]!
+        precondition(allowed(cursor, app: false, uid: 501, me: 99) == Allowed(quit: true, pause: true))
+        precondition(allowed(cursor, app: false, uid: 502, me: 99) == Allowed())  // other users
+        precondition(!maySignal(procs[10]!, in: cursor, uid: 501, me: 10) && !maySignal(procs[11]!, in: cursor, uid: 501, me: 10))  // AppMem, its child
+        precondition(allowed(byName["macOS"]!, app: true, uid: 501, me: 99) == Allowed())  // even with an app
+        precondition(!maySignal(procs[1]!, in: cursor, uid: 501, me: 99))  // launchd, in any group
+        precondition(allowed(byName["iOS Simulator"]!, app: false, uid: 501, me: 99) == Allowed())
+        // Apple's own: no signals, but its app can be asked to quit; in a third-party app's group, signals
+        precondition(allowed(weather, app: false, uid: 501, me: 99) == Allowed() && allowed(weather, app: true, uid: 501, me: 99) == Allowed(quit: true, restart: true))
+        precondition(maySignal(procs[51]!, in: byName["WhatsApp"]!, uid: 501, me: 99))
+        var paused = cursor
+        paused.procs[0].stopped = true
+        precondition(!isPaused(paused, uid: 501) && allowed(paused, app: false, uid: 501, me: 99) == Allowed(quit: true, pause: true, resume: true))
+        paused.procs[1].stopped = true
+        precondition(isPaused(paused, uid: 501) && !isPaused(paused, uid: 502) && allowed(paused, app: false, uid: 501, me: 99) == Allowed(quit: true, resume: true))
+        precondition(allowed(paused.procs[0], in: paused, uid: 501, me: 99) == Allowed(quit: true, resume: true))
+        precondition(allowed(procs[11]!, in: cursor, uid: 501, me: 99) == Allowed(quit: true, pause: true))
+        precondition(summaryText(cursor) == "Cursor: 800 MB, CPU –, 2 processes\n  500 MB  CPU –  PID 10  node\n  300 MB  CPU –  PID 11  node")
+    }
     print("ok")
 }
