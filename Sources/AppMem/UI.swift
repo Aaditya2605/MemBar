@@ -206,6 +206,7 @@ struct Row: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
                 .accessibilityValue([paused ? "Paused" : nil, Usage.note(g)?.help].compactMap { $0 }.joined(separator: ". "))
+                .help(othersHelp(g))
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -215,20 +216,7 @@ struct Row: View {
             .contextMenu { GroupMenu(g: g) }
             if expanded || only != nil {
                 if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
-                ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
-                    HStack {
-                        Text(p.name).lineLimit(1).truncationMode(.middle)
-                        if p.stopped { Text("paused").font(.caption2.bold()) }  // the group badge needs all of them paused
-                        if !p.ports.isEmpty { PortChip(ports: p.ports) }
-                        Spacer()
-                        Text(String(p.pid)).monospacedDigit()
-                        Text(cpu(p.cpu)).monospacedDigit().frame(width: 40, alignment: .trailing)
-                        Text(fmt(p.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
-                    }
-                    .font(.caption).foregroundStyle(.secondary).padding(.leading, 38)
-                    .contentShape(Rectangle())  // right-click in the gaps too
-                    .contextMenu { ProcMenu(p: p, g: g) }
-                }
+                ProcList(g: g, procs: only ?? g.procs)
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 3)
