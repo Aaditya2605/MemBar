@@ -43,26 +43,32 @@ func menuState(_ p: Pressure, waste: Int64) -> (dot: NSColor?, desc: String, tip
     return (dot, desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "AppMem: no leftovers" : tip.joined(separator: "\n"))
 }
 
-/// Header row: a thin bar colored like Activity Monitor's pressure graph. A click
-/// shows the breakdown.
+/// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot colored like
+/// Activity Monitor's pressure graph. One line for both: a second bar would weigh the header
+/// down. A dot, not colored words: green and yellow text is too faint on the light panel.
+/// A click shows the breakdown.
 struct PressureBar: View {
     let sys: SysMem
+    let groups: [Group], slots: [String: Int]  // the bar's parts
     @State private var shown = false
 
     var body: some View {
+        let parts = segments(groups: groups, sys: sys, physical: Int64(ProcessInfo.processInfo.physicalMemory), slots: slots)
         Button { shown.toggle() } label: {
             HStack(spacing: 6) {
-                Text("Pressure")
-                // Not ProgressView: it turns gray and ignores tint when the window is not key.
-                Rectangle().fill(sys.pressure.color).scaleEffect(x: CGFloat(sys.usedPct) / 100, anchor: .leading)
-                    .background(.quaternary).clipShape(Capsule()).frame(height: 5)
-                Text("\(sys.usedPct)% \(sys.pressure.label)").monospacedDigit()
+                RAMBar(parts: parts, note: scaleNote(groups, sys: sys))
+                // Here, not on the button: an outer .help hides the bar's own.
+                HStack(spacing: 4) {
+                    Circle().fill(sys.pressure.color).frame(width: 6, height: 6)
+                    Text("Pressure \(sys.usedPct)% \(sys.pressure.label)").monospacedDigit()
+                }
+                .help("Memory pressure: \(sys.pressure.label). \(sys.free)% of RAM is available. Click for the breakdown.")
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Memory pressure: \(sys.pressure.label). \(sys.free)% of RAM is available. Click for the breakdown.")
-        .accessibilityLabel("Memory pressure \(sys.pressure.label), \(sys.usedPct)%")
+        .accessibilityLabel(ramLabel(parts))
+        .accessibilityValue("Memory pressure \(sys.pressure.label), \(sys.usedPct)%")
         .accessibilityHint("Shows the memory breakdown")
         .popover(isPresented: $shown, arrowEdge: .bottom) { Breakdown(sys: sys) }
     }

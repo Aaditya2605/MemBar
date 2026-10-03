@@ -807,6 +807,36 @@ func selfTest() {
         let saved = try! JSONDecoder().decode(Mark.self, from: JSONEncoder().encode(m))  // UserDefaults keeps it as JSON
         precondition(saved.groups == m.groups && saved.ram == m.ram && abs(saved.at.timeIntervalSince(m.at)) < 0.001)
     }
+
+    do {  // RAMBar.swift: the RAM bar's parts, the largest groups' colors, the tooltips
+        let gb: Int64 = 1 << 30
+        func g(_ name: String, _ m: Int64) -> Group { Group(name: name, isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/x", mem: m)]) }
+        var s = SysMem()
+        s.app = 8 * gb; s.wired = 2 * gb; s.compressed = gb
+        // Footprints add up to 16 GB, App memory is 8: the app part is halved, and the parts add up to the RAM.
+        let gs = [g("A", 6 * gb), g("B", 4 * gb), g("C", 3 * gb), g("D", 2 * gb), g("E", gb)]
+        let p = segments(groups: gs, sys: s, physical: 16 * gb)
+        precondition(p.map(\.name) == ["A", "B", "C", "D", "Other apps", "Wired", "Compressed", "Cached and free"] && p.map(\.colorIndex) == Array(0..<8))
+        precondition(p.map(\.bytes) == [3 * gb, 2 * gb, 3 * gb / 2, gb, gb / 2, 2 * gb, gb, 5 * gb] && p.reduce(0) { $0 + $1.bytes } == 16 * gb)
+        // Under App memory (other users' processes at 0 before top runs): not scaled up, Other apps takes the rest.
+        let few = segments(groups: [g("A", 2 * gb), g("B", gb)], sys: s, physical: 16 * gb)  // fewer groups than slots
+        precondition(few.map(\.colorIndex) == [0, 1, 4, 5, 6, 7] && few[0].bytes == 2 * gb && few[2].bytes == 5 * gb)
+        precondition(segments(groups: [], sys: SysMem(), physical: 0).isEmpty && segments(groups: [g("A", 0)], sys: SysMem(), physical: 0).isEmpty)
+        precondition(segments(groups: gs, sys: SysMem(), physical: 16 * gb).map(\.name) == ["Cached and free"])  // no VM numbers yet
+        // A color stays with its group: B outgrows A and nothing moves; E takes the slot that D leaves.
+        let k = keepSlots(gs, kept: [:])
+        precondition(k == ["A|true": 0, "B|true": 1, "C|true": 2, "D|true": 3])
+        let later = [g("A", 4 * gb), g("B", 7 * gb), g("C", 3 * gb), g("D", gb / 2), g("E", gb)]
+        precondition(keepSlots(later, kept: k) == ["A|true": 0, "B|true": 1, "C|true": 2, "E|true": 3])
+        precondition(segments(groups: later, sys: s, physical: 16 * gb, slots: keepSlots(later, kept: k)).prefix(4).map(\.name) == ["A", "B", "C", "E"])
+        precondition(keepSlots([g("A", gb)], kept: k) == ["A|true": 0] && keepSlots([], kept: k).isEmpty)
+        // The tooltips say when the app parts are scaled; VoiceOver hears every part.
+        let note = scaleNote(gs, sys: s)!
+        precondition(note.hasSuffix(" add up to 16.00 GB.") && scaleNote([g("A", 2 * gb)], sys: s) == nil)
+        precondition(partHelp(p[0], note: note) == "A 3.00 GB\n" + note && partHelp(p[4], note: note).hasPrefix("Other apps 512 MB: the other groups\n"))
+        precondition(partHelp(p[5], note: note) == "Wired 2.00 GB: memory the system keeps in RAM; it cannot be compressed or swapped")
+        precondition(ramLabel(Array(p.suffix(2))) == "RAM: Compressed 1.00 GB, Cached and free 5.00 GB")
+    }
     recallTest()
     alertsTest()
     orphanTest()
