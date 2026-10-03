@@ -214,7 +214,7 @@ struct RuleBadges: View {
         if !notes.isEmpty {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) {
-                    ForEach(notes, id: \.symbol) { n in Image(systemName: n.symbol).flag().help(n.help + ". Right-click to change.").accessibilityLabel(n.help) }
+                    ForEach(notes, id: \.symbol) { n in Badge.rule(n.symbol).help(n.help + ". Right-click to change.").accessibilityLabel(n.help) }
                 }
                 Color.clear.frame(width: 0, height: 0)
             }

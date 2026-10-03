@@ -17,6 +17,8 @@ enum Badge {
     static var quitIdle: some View { Image(systemName: "timer").flag().accessibilityLabel("Quits when idle") }
     /// Slashed when its alert cannot come.
     static func bell(on: Bool) -> some View { Image(systemName: on ? "bell" : "bell.slash").flag() }
+    /// Restart When Above, Pause When in Background: ruleNotes' symbols.
+    static func rule(_ symbol: String) -> some View { Image(systemName: symbol).flag() }
     /// "for 2 d", "idle 3 h": a note, quieter than a flag.
     static func usage(_ s: String) -> some View { Text(s).font(.caption2).foregroundStyle(.secondary) }
 }
@@ -27,6 +29,7 @@ struct BadgeLegend: View {
     var body: some View {
         let g = Group(name: "", isApp: true, procs: [Proc(pid: 0, ppid: 0, uid: 0, path: "", mem: 1000 << 20)])
         let new = changeLabel(g, Mark.Delta(new: [g.id]))!, grew = changeLabel(g, Mark.Delta(change: [g.id: 320 << 20]))!
+        let rules = ruleNotes(restart: restartChoices[0], pause: true, paused: false), pausedNow = ruleNotes(restart: nil, pause: true, paused: true)[0].symbol
         VStack(alignment: .leading, spacing: 6) {
             Text("What the Badges Mean").font(.headline).accessibilityAddTraits(.isHeader)
             header("In the list")
@@ -42,7 +45,11 @@ struct BadgeLegend: View {
             line(HStack(spacing: 4) { Badge.bell(on: true); Badge.bell(on: false) }.accessibilityElement(children: .ignore).accessibilityLabel("Bell"),
                  "Alerts above its limit. Slashed: the alert is off.")
             line(Badge.quitIdle, "Quit When Idle: AppMem asks it to quit when unused.")
+            line(Badge.rule(rules[0].symbol).accessibilityLabel("Restart"), "Restart When Above: it restarts above its limit when unused.")
+            line(HStack(spacing: 4) { Badge.rule(rules[1].symbol); Badge.rule(pausedNow) }.accessibilityElement(children: .ignore).accessibilityLabel("Pause"),
+                 "Pause When in Background: paused after 5 min in the background. Filled: paused now.")
             line(PortChip(ports: [3000], network: true), "The TCP ports it listens on (a dev server).")
+            line(Text(fmt(1 << 30)).font(.caption).monospacedDigit().slotDot(0).padding(.leading, 8), "Its color in the RAM bar: one of the \(ramSlots) largest.")
             header("In the menu bar")
             dot(.normal, waste: 1, "Yellow", "Leftovers found")
             dot(.warning, waste: 0, "Orange", "Memory pressure: \(Pressure.warning.label)")
