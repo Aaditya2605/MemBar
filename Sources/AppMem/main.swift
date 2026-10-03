@@ -20,4 +20,13 @@ let delegate = Delegate()
 ProcessInfo.processInfo.disableAutomaticTermination("Menu bar app: it has no windows but must keep running")
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
+// An accessory app shows no menu bar, but text fields take ⌘X ⌘C ⌘V ⌘A ⌘Z only from the
+// main menu's Edit items: without them the search fields ignore these keys.
+let edit = NSMenu(title: "Edit")
+for (title, action, key) in [("Undo", "undo:", "z"), ("Redo", "redo:", "Z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+                             ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+    edit.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
+}
+app.mainMenu = NSMenu()
+app.mainMenu?.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = edit
 app.run()

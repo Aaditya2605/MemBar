@@ -170,6 +170,7 @@ struct Panel: View {
             }
             .focusable().focusEffectDisabled().focused($focus, equals: .list)
             .onKeyPress(action: listKey)
+            .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
             .scrolls(to: nav.sel)
             let small = query.trimmingCharacters(in: .whitespaces).isEmpty ? listed.small : []
             if !small.isEmpty {

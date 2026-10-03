@@ -130,7 +130,7 @@ struct DetailsView: View {
             }
             .width(min: 90, ideal: 150)
             TableColumn("PID", value: \.p.pid) { num(String($0.p.pid)) }.width(46)
-            TableColumn("User", value: \.user) { Text($0.user).lineLimit(1) }.width(min: 44, ideal: 80, max: 80)
+            TableColumn("User", value: \.user) { Text($0.user).lineLimit(1).help($0.user) }.width(min: 44, ideal: 80, max: 80)
             TableColumn("CPU", value: \.p.cpu) { num(cpu($0.p.cpu)).help("% of one core since the last scan") }
                 .width(46)
             TableColumn("Memory", value: \.p.mem) { num(fmt($0.p.mem)) }.width(66)
@@ -151,7 +151,7 @@ struct DetailsView: View {
                 Text(startedText(r.start)).monospacedDigit().lineLimit(1).help(r.start == .distantPast ? ""
                     : "\(r.start.formatted(date: .abbreviated, time: .shortened)), \(ago(-r.start.timeIntervalSinceNow)) ago")
             }
-            .width(56)
+            .width(66)  // "12:59 PM" is 58 pt, "오후 12:59" 63, "12:59 p.m." 65
             TableColumn("Command Line", value: \.command) { r in
                 Text(r.command).lineLimit(1).foregroundStyle(.secondary).help(r.command)
             }

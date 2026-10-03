@@ -66,6 +66,13 @@ extension Panel {
         return .handled
     }
 
+    /// ⌘C on the list: a process line's path; a group's Copy Summary. Through the main menu's
+    /// Copy (main.swift), not listKey: the menu takes ⌘C first, also while its Copy is off.
+    var copied: String? {
+        guard let s = nav.sel, let g = model.groups.first(where: { $0.id == s.group }) else { return nil }
+        return s.pid.flatMap { pid in g.procs.first { $0.pid == pid } }?.path ?? summaryText(g)
+    }
+
     /// Keys while the list has focus. A key that types text starts a search with it.
     func listKey(_ k: KeyPress) -> KeyPress.Result {
         let cmd = k.modifiers.contains(.command), s = nav.sel
@@ -82,9 +89,6 @@ extension Panel {
         case "\u{7f}" where cmd, .delete where cmd:
             guard let g, s?.pid == nil, canStop(g) else { return .ignored }
             model.stopGroups([g])
-        case "c" where cmd:  // a process line: its path; a group: Copy Summary
-            guard let g, let s else { return .ignored }
-            Actions.copy(s.pid.flatMap { pid in g.procs.first { $0.pid == pid } }?.path ?? summaryText(g))
         case "f" where cmd: focus = .search
         default:
             guard k.modifiers.isDisjoint(with: [.command, .option, .control]), types(k.characters) else { return .ignored }
