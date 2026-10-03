@@ -895,6 +895,7 @@ func selfTest() {
         precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == .bad("--snapshot-details works only in debug builds"))
         #endif
     }
+    do { detailChartTest() }  // DetailChart.swift
 
     do {  // Search.swift: tokens and text, each token's match, hits, the empty result
         let s = Search("Leftover  >1GB node")

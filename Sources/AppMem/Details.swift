@@ -101,12 +101,14 @@ struct DetailsView: View {
             .padding(10)
             Divider()
             if let g {
+                DetailChart(history: model.history, g: g)  // DetailChart.swift
+                Divider()
                 table(g, rows)
             } else {
                 ContentUnavailableView("\(name) has no processes", systemImage: "memorychip")
             }
         }
-        .frame(minWidth: 560, minHeight: 240)
+        .frame(minWidth: 560, minHeight: 340)  // 100 more for the chart header: the table keeps its room
         // No menu bar in an accessory app, so no File > Close: ⌘W from a hidden button.
         .background { Button("Close") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w").hidden() }
     }

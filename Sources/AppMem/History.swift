@@ -155,10 +155,11 @@ extension History {
             h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15, ram: Int64(Double(sys.ram) * (0.9 + 0.1 * f + 0.02 * wave)),
                                     swap: Int64(Double(sys.swap) * f), groups: Dictionary(uniqueKeysWithValues: gs)))
         }
-        for i in 0..<276 {  // the 23 h before, one point each 5 min: the 24 h chart
+        for i in 0..<276 {  // the 23 h before, one point each 5 min: the 24 h chart (Details too: its groups)
             let wave = sin(Double(i) / 24)
+            let gs = groups.map { ($0.id, Int64(Double($0.mem) * ($0.id == big ? 0.5 : 1) * (0.85 + 0.1 * wave))) }
             h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300, ram: Int64(Double(sys.ram) * (0.8 + 0.1 * wave)),
-                                  swap: Int64(Double(sys.swap) * 0.5 * (1 + wave)), groups: [:]))
+                                  swap: Int64(Double(sys.swap) * 0.5 * (1 + wave)), groups: topGroups(Dictionary(uniqueKeysWithValues: gs))))
         }
         return h
     }
