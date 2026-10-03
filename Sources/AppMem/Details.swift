@@ -98,9 +98,9 @@ struct DetailsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text(detailsSummary(rows.map(\.p), total: g?.procs.count ?? 0)).monospacedDigit()
-                if let g, g.leftover {
-                    Text("leftover").font(.caption.bold()).foregroundStyle(.orange)
-                        .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
+                if let g, g.leftover || g.orphan {  // as the row's badge
+                    Text(g.orphan ? "orphan" : "leftover").font(.caption.bold()).foregroundStyle(g.leftover ? .orange : .secondary)
+                        .help(flagHelp(g))
                 }
                 Spacer()
                 TextField("Search name, PID, user, command or :port", text: $query)

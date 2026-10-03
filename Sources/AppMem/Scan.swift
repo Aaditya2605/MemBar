@@ -661,6 +661,11 @@ func selfTest() {
         precondition(allowed(paused.procs, in: paused, uid: 501, me: 99) == Allowed(quit: true, pause: true, resume: true))
         precondition(allowed(paused.procs, in: paused, uid: 502, me: 99) == Allowed() && allowed([], in: cursor, uid: 501, me: 99) == Allowed())
         precondition(allowed(byName["macOS"]!.procs, in: byName["macOS"]!, uid: 501, me: 99) == Allowed())
+        // The header badge's tooltip is the row's: orphans and the emulator too.
+        var orphan = Group(name: "node", isApp: false)
+        orphan.orphan = true
+        precondition(flagHelp(cursor) == "Cursor is not open" && flagHelp(orphan) == orphanHelp
+                     && flagHelp(Group(name: "Android Emulator", isApp: true)) == "An emulator runs and Android Studio is not open")
         #if DEBUG
         precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == nil)
         precondition(parseArgs(["--snapshot-details", "x.png"]) == .bad("--snapshot-details needs OUT.png GROUP"))

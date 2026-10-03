@@ -222,10 +222,9 @@ struct Row: View {
                         icon.frame(width: 16, height: 16)
                         Text(g.name).lineLimit(1).truncationMode(.middle)
                         if g.orphan {  // orange only when counted as a leftover (Settings)
-                            Text("orphan").font(.caption2.bold()).foregroundStyle(g.leftover ? .orange : .secondary).help(orphanHelp)
+                            Text("orphan").font(.caption2.bold()).foregroundStyle(g.leftover ? .orange : .secondary).help(flagHelp(g))
                         } else if g.leftover {
-                            Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
-                                .help(g.isSimulator ? "A device is booted and Simulator is not open" : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open")
+                            Text("leftover").font(.caption2.bold()).foregroundStyle(.orange).help(flagHelp(g))
                         }
                         if let why = g.respawns {  // an icon: a second word would squeeze the name
                             Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
@@ -287,6 +286,13 @@ struct Row: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+/// Why a group has its orphan or leftover badge: the badge's tooltip (row and Details),
+/// and the first sentence of the leftover notification.
+func flagHelp(_ g: Group) -> String {
+    g.orphan ? orphanHelp : g.isSimulator ? "A device is booted and Simulator is not open"
+        : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open"
 }
 
 /// "12%", or "–" below 0.1% so idle groups do not read as busy.
