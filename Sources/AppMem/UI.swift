@@ -79,6 +79,9 @@ struct Panel: View {
                     Spacer()
                     if model.waste > 0 {
                         Text("Leftovers: \(fmt(model.waste))").foregroundStyle(.orange)
+                        Button("Stop All") { model.stopAll() }
+                            .controlSize(.small)
+                            .help("Stop every leftover: \(model.groups.filter(\.leftover).map(\.name).joined(separator: ", "))")
                     }
                     Button { model.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.borderless)
@@ -168,7 +171,7 @@ struct Row: View {
     @State private var expanded = false
 
     var body: some View {
-        let growing = growthText(points)
+        let growing = growthText(points), paused = isPaused(g)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Button { expanded.toggle() } label: {
@@ -181,12 +184,17 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        if paused {
+                            Text("paused").font(.caption2.bold()).foregroundStyle(.secondary)
+                                .help("Paused: its processes do not run. Right-click to resume.")
+                        }
                         UsageBadge(g: g)
                         if let growing {
                             Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
                                 .help("Memory is growing: \(growing)")
                         }
-                        if !g.ports.isEmpty { PortChip(ports: g.ports, network: true, limit: g.leftover ? 0 : growing == nil ? 2 : 1) }
+                        // Next to a leftover or paused badge only the icon: the name keeps its room.
+                        if !g.ports.isEmpty { PortChip(ports: g.ports, network: true, limit: g.leftover || paused ? 0 : growing == nil ? 2 : 1) }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -197,18 +205,20 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue(Usage.note(g)?.help ?? "")
+                .accessibilityValue([paused ? "Paused" : nil, Usage.note(g)?.help].compactMap { $0 }.joined(separator: ". "))
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
                         .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
                 }
             }
+            .contextMenu { GroupMenu(g: g) }
             if expanded || only != nil {
                 if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
                 ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
                     HStack {
                         Text(p.name).lineLimit(1).truncationMode(.middle)
+                        if p.stopped { Text("paused").font(.caption2.bold()) }  // the group badge needs all of them paused
                         if !p.ports.isEmpty { PortChip(ports: p.ports) }
                         Spacer()
                         Text(String(p.pid)).monospacedDigit()
@@ -216,6 +226,8 @@ struct Row: View {
                         Text(fmt(p.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                     }
                     .font(.caption).foregroundStyle(.secondary).padding(.leading, 38)
+                    .contentShape(Rectangle())  // right-click in the gaps too
+                    .contextMenu { ProcMenu(p: p, g: g) }
                 }
             }
         }
