@@ -77,6 +77,9 @@ extension Panel {
     func listKey(_ k: KeyPress) -> KeyPress.Result {
         let cmd = k.modifiers.contains(.command), s = nav.sel
         let g = s.flatMap { s in model.groups.first { $0.id == s.group } }
+        // A held key repeats: arrows walk on, but Return would toggle the group ten times a second
+        // and ⌘⌫ would stop it again on each repeat. Handled, not passed on: see escape().
+        if k.phase == .repeat, k.key == .return || cmd && (k.key == "\u{7f}" || k.key == .delete) { return .handled }
         switch k.key {
         case .downArrow, .upArrow: return step(k.key == .downArrow ? 1 : -1)
         case .rightArrow: if let s, s.pid == nil { nav.expanded.insert(s.group) }
@@ -102,7 +105,9 @@ extension Panel {
 
     /// Esc clears the search first, then closes the popover. Closed here: passed on, the
     /// key only takes the focus away. performClose, so popoverDidClose stops the fast scans.
-    func escape() -> KeyPress.Result {
+    /// A repeat does nothing: Esc held to clear the search must not close the popover too.
+    func escape(_ k: KeyPress) -> KeyPress.Result {
+        guard k.phase == .down else { return .handled }
         if query.isEmpty { (NSApp.delegate as? Delegate)?.popover.performClose(nil) } else { query = "" }
         return .handled
     }

@@ -184,7 +184,7 @@ struct Panel: View {
             FreedLine()
         }
         .frame(width: 400, height: 540)
-        .onKeyPress(.escape, action: escape)
+        .onKeyPress(.escape, phases: [.down, .repeat], action: escape)
         .onChange(of: rowIDs) { _, ids in nav.sel = kept(nav.sel, in: ids) }
         .onAppear { focus = .list; nav.focusList = { focus = .list } }
         // Each time the popover opens (onAppear runs only the first time), else AppKit gives the
