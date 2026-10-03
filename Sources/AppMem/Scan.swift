@@ -67,6 +67,11 @@ func bundlePath(_ path: String) -> String? {
 func openApps<S: Sequence>(_ paths: S) -> Set<String> where S.Element == String {
     Set(paths.compactMap { path in
         let p = path.split(separator: "/", omittingEmptySubsequences: false)
+        // An iPhone/iPad app on a Mac runs from `Wrapper/<X>.app/<exe>`: no Contents/MacOS. Only
+        // under Wrapper: the simulator's own Maps.app/Maps must not hide a "Google Maps" leftover.
+        if p.count >= 4, !p[p.count - 1].isEmpty, p[p.count - 3] == "Wrapper", p[p.count - 2].count > 4, p[p.count - 2].hasSuffix(".app") {
+            return p[p.count - 2].dropLast(4).lowercased()
+        }
         guard p.count >= 5, !p[p.count - 1].isEmpty, p[p.count - 2] == "MacOS", p[p.count - 3] == "Contents",
               p[p.count - 4].count > 4, p[p.count - 4].hasSuffix(".app") else { return nil }
         return p[p.count - 4].dropLast(4).lowercased()
@@ -90,7 +95,11 @@ func isLeftover(_ g: Group, open: Set<String>) -> Bool {
     // ponytail: Stop's SIGKILL after 3 s can cut the emulator's quickboot snapshot save
     // short; its next boot is then cold.
     if g.isEmulator { return !open.contains { $0.hasPrefix("android studio") } }  // Android Studio Preview.app too
-    return g.isApp && !isOpen(g.name, open)
+    // An app of its own that runs inside this group's folder (Instruments or FileMerge in
+    // Xcode.app, an IDE in Application Support/JetBrains) shares no word with the group
+    // name: it is open, not a leftover. Not a headless Chrome that an agent started: its
+    // own folder is not the group's.
+    return g.isApp && !isOpen(g.name, open) && !g.procs.contains { appOf($0.path).name == g.name && !openApps([$0.path]).isEmpty }
 }
 
 /// The top process of `pid`'s owner: the responsible process if it is alive, else
@@ -327,6 +336,16 @@ func selfTest() {
     precondition(isOpen("Claude", open) && !isOpen("Cursor", open))
     precondition(isOpen("ai.opencode.desktop", ["opencode"]) && isOpen("Code", ["visual studio code"]))
     precondition(!isOpen("Code", ["xcode"]) && !isOpen("AppMemTestApp", ["appmem"]))
+    let runtime = "/Library/Developer/CoreSimulator/Volumes/iOS_23A/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.0.simruntime/Contents/Resources/RuntimeRoot"
+    precondition(openApps(["/Applications/Foo.app/Wrapper/Foo.app/Foo"]) == ["foo"] && openApps([runtime + "/Applications/Maps.app/Maps"]).isEmpty)
+    let xcode = "/Applications/Xcode.app/Contents/", agent = "/Users/a/Library/Application Support/Cursor/node"
+    for tool in ["Applications/Instruments.app/Contents/MacOS/Instruments", "Developer/Applications/Simulator.app/Contents/MacOS/Simulator"] {
+        let g = Group(name: "Xcode", isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: xcode + tool, mem: 0)])
+        precondition(!isLeftover(g, open: openApps(g.procs.map(\.path))))  // Xcode quit, its tool is still in use
+    }
+    let headless = Group(name: "Cursor", isApp: true, procs: [Proc(pid: 3, ppid: 1, uid: 501, path: agent, mem: 0),
+        Proc(pid: 4, ppid: 3, uid: 501, path: "/Users/a/.cache/puppeteer/chrome/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing", mem: 0)])
+    precondition(isLeftover(headless, open: openApps(headless.procs.map(\.path))))
 
     func p(_ pid: pid_t, _ ppid: pid_t, _ path: String, _ mb: Int64) -> (pid_t, Proc) {
         (pid, Proc(pid: pid, ppid: ppid, uid: 501, path: path, mem: mb << 20))
@@ -626,6 +645,10 @@ func selfTest() {
         precondition(stops(groups, c1, at: h, uid: 502) == [])  // only other users' processes: Stop cannot act
         precondition(stops(ignoring(groups, ["Cursor"]), c1, at: h).isEmpty)  // ignored: never
         precondition(leftoverClock(ignoring(groups, ["Cursor"]), since: c1, now: t0 + h)["Cursor|true"] == nil)
+        var held = groups
+        held[0].procs[0].stopped = true  // paused to resume later: never auto-stopped, and Resume gets a full wait
+        let ch = leftoverClock(held, since: c1, now: t0 + h)
+        precondition(ch["Cursor|true"] == nil && stops(held, ch, at: h).isEmpty && leftoverClock(groups, since: ch, now: t0 + h)["Cursor|true"] == t0 + h)
         var again = groups
         again[0].respawns = "x"  // macOS starts it again: no stop each wait
         precondition(stops(again, c1, at: h).isEmpty)

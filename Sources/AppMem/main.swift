@@ -14,6 +14,8 @@ if let i = CommandLine.arguments.firstIndex(of: "--snapshot-details"), i + 2 < C
     exit(0)
 }
 #endif
+// getuid() is 0 under sudo: root's daemons would pass the "this user only" rules of Stop, Quit and Pause.
+if getuid() == 0 { fputs("AppMem: the menu bar app does not run as root: run it without sudo\n", stderr); exit(2) }
 
 let app = NSApplication.shared
 let delegate = Delegate()

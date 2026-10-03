@@ -21,7 +21,7 @@ struct AppOwner: Equatable { let app: String, exe: String, uid: uid_t }
 func isCLI(_ path: String) -> Bool {
     let a = appOf(path)
     return !a.isApp && a.name != "iOS Simulator" && !systemPrefixes.contains(where: path.hasPrefix)
-        && !["tmux", "screen", "zellij"].contains(a.name)
+        && !["tmux", "screen", "zellij", "dtach", "abduco"].contains(a.name)
 }
 
 /// The path that names the group of `p`, whose owner by today's rule is `top`: the
@@ -140,7 +140,7 @@ func recallTest() {
     let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", node = "/opt/homebrew/bin/node"
     precondition(isCLI(node) && isCLI("-/opt/homebrew/bin/bash") && !isCLI(code) && !isCLI("/usr/bin/python3"))
     precondition(!isCLI("/Users/a/Library/Application Support/Cursor/node") && !isCLI("launchd_sim"))
-    precondition(!isCLI("/opt/homebrew/bin/tmux"))
+    precondition(!isCLI("/opt/homebrew/bin/tmux") && !isCLI("/opt/homebrew/Cellar/dtach/0.9/bin/dtach") && !isCLI("/opt/homebrew/bin/abduco"))
 
     // VS Code open: it started a dev server (61, detached: ppid 1) with a child (62).
     let open = Dictionary(uniqueKeysWithValues: [

@@ -19,7 +19,7 @@ func launchdPIDs(_ list: String) -> Set<pid_t> {
 /// (isCLI: not in an .app, not Apple's, not tmux and the like, whose sessions are kept
 /// on purpose) that launchd adopted (ppid 1) but does not run as a job, and `detached`.
 /// Not one with a process on a live `terminal` under it: a session keeper that the name
-/// list misses (mosh-server, dtach, abduco), whose pty holds the user's shell and its vim.
+/// list misses (mosh-server), whose pty holds the user's shell and its vim.
 /// Never AppMem or its children: they are not in the walk.
 func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool, terminal: (pid_t) -> Bool,
              uid: uid_t = getuid(), me: pid_t = getpid()) -> Set<pid_t> {

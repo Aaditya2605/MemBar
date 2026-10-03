@@ -29,9 +29,10 @@ func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.isSimulator || g.p
 /// When each leftover was first seen as one, by group id: AppMem's own clock, not process
 /// age, kept only while auto-stop is on (Auto.check), so a fresh launch or auto-stop turned
 /// on never stops at once. A group that is not a leftover in this scan (it exited, its app
-/// opened, it is ignored) drops out, so its clock starts again.
+/// opened, it is ignored) drops out, so its clock starts again. So does one with a paused
+/// process: the user keeps it on purpose, and Resume gets a full wait.
 func leftoverClock(_ groups: [Group], since: [String: Date], now: Date) -> [String: Date] {
-    Dictionary(uniqueKeysWithValues: groups.filter(\.leftover).map { ($0.id, since[$0.id] ?? now) })
+    Dictionary(uniqueKeysWithValues: groups.filter { $0.leftover && !$0.procs.contains(where: \.stopped) }.map { ($0.id, since[$0.id] ?? now) })
 }
 
 /// The leftovers to auto-stop now. Not one that respawns: macOS starts it again, so it
