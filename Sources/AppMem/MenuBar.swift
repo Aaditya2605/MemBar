@@ -54,7 +54,7 @@ func report(groups: [Group], sys: SysMem, date: Date, physical: Int64 = Int64(Pr
                      + left.map { "\($0.name) \(fmt($0.mem))" }.joined(separator: ", ") + ")"),
                  "", "| App | Memory | CPU | Processes | Flags |", "|:--|--:|--:|--:|:--|"]
     for g in top.prefix(15) {
-        let f = [g.orphan ? "orphan" : g.leftover ? "leftover" : nil, g.respawns == nil ? nil : "respawns"].compactMap { $0 } + flags(g) + (isPaused(g) ? ["paused"] : [])
+        let f = flagWords(g) + flags(g) + (isPaused(g) ? ["paused"] : [])  // Export.swift
         let name = g.name.replacingOccurrences(of: "|", with: "\\|")  // a bare | ends the cell
         lines.append("| \(name) | \(fmt(g.mem)) | \(cpu(g.cpu)) | \(g.procs.count) | \(f.joined(separator: ", ")) |")
     }
@@ -91,11 +91,12 @@ struct MenuBarShowsPicker: View {
 
 extension Model {
     /// The gear menu's, the right-click menu's and appmem://report's Copy Report.
-    func copyReport() {
+    func copyReport() { Actions.copy(report(groups: groups, sys: sys, date: Date(), flags: reportFlags)) }
+
+    /// The flags the group alone does not tell (growing, idle): Copy Report's and Save Report's.
+    var reportFlags: (Group) -> [String] {
         let h = history
-        Actions.copy(report(groups: groups, sys: sys, date: Date()) { g in
-            [growthText(h.points(g.id)) == nil ? nil : "growing", Usage.idle(g) == nil ? nil : "idle"].compactMap { $0 }
-        })
+        return { g in [growthText(h.points(g.id)) == nil ? nil : "growing", Usage.idle(g) == nil ? nil : "idle"].compactMap { $0 } }
     }
 }
 

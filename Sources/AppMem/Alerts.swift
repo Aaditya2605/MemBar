@@ -260,8 +260,7 @@ struct LimitBell: View {
     var body: some View {
         if let help = limitHelp(g, on: on) {
             ViewThatFits(in: .horizontal) {  // as UsageBadge: gone before the name truncates, as next to Stop
-                Image(systemName: on && !g.ignored ? "bell" : "bell.slash").flag()
-                    .help(help).accessibilityLabel(help)
+                Badge.bell(on: on && !g.ignored).help(help).accessibilityLabel(help)  // Legend.swift
                 Color.clear.frame(width: 0, height: 0)
             }
             .layoutPriority(-1)

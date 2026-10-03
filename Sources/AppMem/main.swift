@@ -9,6 +9,7 @@ if ProcessInfo.processInfo.environment["MENUBAR"] != nil, let i = CommandLine.ar
     exit(0)
 }
 if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
+    if ProcessInfo.processInfo.environment["LEGEND"] != nil { snapshotLegend(to: CommandLine.arguments[i + 1]); exit(0) }  // Legend.swift
     snapshot(to: CommandLine.arguments[i + 1]) { Panel(model: $0, query: CommandLine.arguments.dropFirst(i + 2).first ?? "") }
     exit(0)
 }

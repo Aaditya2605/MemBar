@@ -110,11 +110,11 @@ struct UsageBadge: View {
     var body: some View {
         if let n = Usage.note(g) {
             ViewThatFits(in: .horizontal) {
-                Text("\(n.word) \(n.age)")
-                Text(n.age)
+                Badge.usage("\(n.word) \(n.age)")  // Legend.swift
+                Badge.usage(n.age)
                 Color.clear.frame(width: 0, height: 0)
             }
-            .font(.caption2).foregroundStyle(.secondary).help(n.help)
+            .help(n.help)
             .layoutPriority(-1)  // gets what is left after the name and the columns
         }
     }
