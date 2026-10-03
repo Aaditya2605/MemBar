@@ -790,5 +790,45 @@ func selfTest() {
         precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == .bad("--snapshot-details works only in debug builds"))
         #endif
     }
+
+    do {  // Search.swift: tokens and text, each token's match, hits, the empty result
+        let s = Search("Leftover  >1GB node")
+        precondition(s.tokens == [.leftover, .memOver(1 << 30)] && s.text == "node" && Search(" \t").isEmpty)
+        precondition(Search(">1.5gb >0.5GB <100mb cpu>2.5 CPU>5% :3000 port:80 User:Root pid:42").tokens
+                     == [.memOver(1536 << 20), .memOver(512 << 20), .memUnder(100 << 20), .cpuOver(2.5), .cpuOver(5), .port(3000), .port(80), .user("root"), .pid(42)])
+        precondition(Search("orphan paused growing idle new ignored").tokens == [.orphan, .paused, .growing, .idle, .new, .ignored])
+        // Look like tokens, are text: no unit, another unit, inf and nan (Int64() traps), no number, too big a port.
+        let odd = Search(">1000 >1tb >gb >infgb >nangb cpu>x cpu>inf pid:abc port:99999 :x user: foo:bar leftovers")
+        precondition(odd.tokens.isEmpty && odd.text == ">1000 >1tb >gb >infgb >nangb cpu>x cpu>inf pid:abc port:99999 :x user: foo:bar leftovers")
+        precondition(Search("google   chrome >1gb").text == "google chrome")  // words joined by one space, as a name has them
+        let cursor = pg["Cursor"]!, claude = pg["Claude"]!  // leftover 800 MB, PIDs 10 11, :3000 on 11; open 1300 MB, :3000 :9229 on 20
+        precondition(matches(.leftover, cursor) && !matches(.leftover, claude) && !matches(.orphan, cursor))
+        precondition(matches(.memOver(1 << 30), claude) && !matches(.memOver(1 << 30), cursor) && matches(.memUnder(900 << 20), cursor) && !matches(.memUnder(800 << 20), cursor))
+        precondition(matches(.port(9229), claude) && !matches(.port(9229), cursor) && matches(.pid(11), cursor) && !matches(.pid(20), cursor))
+        precondition(matches(.growing, claude, .init(growing: true)) && !matches(.growing, claude) && matches(.idle, claude, .init(idle: true)))
+        precondition(matches(.new, claude, .init(new: true)) && !matches(.new, claude) && matches(.ignored, claude, .init(ignored: true)))
+        precondition(matches(.ignored, ig[0]) && !matches(.ignored, cursor))  // Cursor unflagged by the list
+        var busy = claude, held = cursor, root = cursor, left = cursor
+        busy.procs[0].cpu = 4; busy.procs[1].cpu = 2; left.orphan = true
+        precondition(matches(.cpuOver(5), busy) && !matches(.cpuOver(6), busy) && !matches(.cpuOver(5), claude))
+        held.procs = held.procs.map { var p = Proc(pid: $0.pid, ppid: $0.ppid, uid: getuid(), path: $0.path, mem: $0.mem); p.stopped = true; return p }
+        precondition(matches(.paused, held) && !matches(.paused, cursor) && matches(.orphan, left))
+        root.procs[1] = Proc(pid: 11, ppid: 10, uid: 0, path: "/usr/sbin/d", mem: 1)
+        precondition(matches(.user("root"), root) && matches(.user("0"), root) && !matches(.user("root"), cursor))
+        // Hits: process tokens pick lines (on one process together), group tokens do not, text keeps its meaning.
+        precondition(hits(cursor, Search("")) == nil && hits(cursor, Search("leftover >500mb")) == nil && hits(cursor, Search("cursor")) == nil)
+        precondition(hits(cursor, Search(":3000"))!.map(\.pid) == [11] && hits(cursor, Search("cursor port:3000 leftover"))!.map(\.pid) == [11])
+        precondition(hits(claude, Search(":3000 pid:20"))!.map(\.pid) == [20] && hits(claude, Search(":3000 pid:21"))!.isEmpty)
+        precondition(hits(cursor, Search("3000"))!.map(\.pid) == [11] && hits(cursor, Search("10"))!.map(\.pid) == [10])  // text: a port, a PID
+        precondition(hits(root, Search("user:root"))!.map(\.pid) == [11] && hits(cursor, Search("node pid:10"))!.map(\.pid) == [10])
+        precondition(found(cursor, Search("leftover >500mb node")) && !found(cursor, Search("leftover >1gb")) && !found(claude, Search("leftover")))
+        precondition(found(claude, Search("claude :9229")) && !found(claude, Search("claude :1")) && !found(claude, Search("nothing-here")))
+        precondition(found(cursor, Search("cpu>x")) == false && found(cursor, Search(">1tb")) == false)  // text that no name has
+        precondition(noResultsText(Search("leftover >1gb cpu>5 node")) == "Filters: leftover, over 1 GB, CPU over 5%\nText: “node”")
+        precondition(Search(">1.5gb >0.5gb").tokens.map(\.label) == ["over 1.5 GB", "over 512 MB"])
+        precondition(noResultsText(Search("new"), marked: false) == "Filters: new since the mark\nNo mark yet: the flag button sets one."
+                     && noResultsText(Search("leftover"), marked: false) == "Filters: leftover")
+        precondition(noResultsText(Search("new :3000 user:root pid:7 <500mb")) == "Filters: new since the mark, port 3000, user root, PID 7, under 500 MB")
+    }
     print("ok")
 }

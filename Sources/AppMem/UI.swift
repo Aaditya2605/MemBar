@@ -101,15 +101,14 @@ struct Panel: View {
     /// The Settings filters thin the plain list; a search looks at every group.
     var listed: (shown: [Group], small: [Group]) { visible(model.groups, hideSmall: hideSmall, showMacOS: showMacOS) }
 
-    /// The search text as matching uses it. One place: shown and rowIDs must agree.
-    var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+    /// The search as tokens and text (Search.swift). One place: shown and rowIDs must agree.
+    var q: Search { Search(query) }
     var markDelta: Mark.Delta? { model.mark.map { delta(mark: $0, groups: model.groups) } }
 
-    /// Leftovers first, then by the sort column. A query keeps the groups whose name,
-    /// or one of whose process names or PIDs, matches.
+    /// Leftovers first, then by the sort column. A search keeps the groups it finds, from all groups.
     var shown: [Group] {
         let q = q
-        let gs = q.isEmpty ? listed.shown : model.groups.filter { $0.name.lowercased().contains(q) || !matching($0, q).isEmpty }
+        let gs = q.isEmpty ? listed.shown : searched(q)
         let d = markDelta
         func key(_ g: Group) -> Double {
             switch sort { case .name: 0; case .procs: Double(g.procs.count); case .cpu: g.cpu; case .memory: Double(g.mem); case .change: Double(d?.key(g) ?? g.mem) }
@@ -156,12 +155,13 @@ struct Panel: View {
                 IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
                 RAMChart(samples: model.history.samples)
-                TextField("Search apps, processes, PIDs or :ports", text: $query)
+                TextField("Search or filter: leftover, >1gb, :3000", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
                     .focused($focus, equals: .search)
                     .onKeyPress(keys: [.upArrow, .downArrow]) { step($0.key == .downArrow ? 1 : -1) }
                     .help("Keys: ↑ ↓ select a row, → ← open and close it, ⌘C copy, ⌘⌫ Stop a leftover or orphan, ⌘F search, Esc clear")
+                    .searchMenu(marked: model.mark != nil, insert: insert)
             }
             .padding(10)
             Divider()
@@ -191,7 +191,7 @@ struct Panel: View {
             .onKeyPress(action: listKey)
             .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
             .scrolls(to: nav.sel)
-            .overlay { if s.isEmpty && !typed.isEmpty { ContentUnavailableView.search(text: typed) } }  // else no match looks like loading
+            .overlay { if s.isEmpty && !typed.isEmpty { NoResults(typed: typed, q: q, marked: model.mark != nil) } }  // else no match looks like loading
             let small = q.isEmpty ? listed.small : []
             if !small.isEmpty {
                 Divider()
@@ -230,10 +230,7 @@ struct Panel: View {
     }
 }
 
-/// The search hits inside `g`, shown expanded; nil with no query or when the group's name matches.
-func hits(_ g: Group, _ q: String) -> [Proc]? { q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q) }
-
-/// The processes of `g` whose name contains `q`, or whose PID or a port is `q`.
+/// The processes of `g` whose name contains `q`, or whose PID or a port is `q`: the search's text.
 func matching(_ g: Group, _ q: String) -> [Proc] {
     g.procs.filter { $0.name.lowercased().contains(q) || String($0.pid) == q || portMatch($0.ports, q) }
 }
