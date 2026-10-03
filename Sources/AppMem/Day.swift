@@ -151,12 +151,7 @@ struct HistoryChart: View {
             // Only once a range has a chart: the first minute's slot stays quiet. After a long quit the
             // last hour can be empty while the 24 h are not, so it shows then.
             if history.older.count + history.samples.count >= 2 {
-                Picker("Chart Range", selection: $day) {
-                    Text("1 h").tag(false).accessibilityLabel("1 hour")
-                    Text("24 h").tag(true).accessibilityLabel("24 hours")
-                }
-                .pickerStyle(.segmented).labelsHidden().controlSize(.mini).fixedSize()
-                .help("Show the last hour or the last 24 hours")
+                RangePicker(day: $day).controlSize(.mini)  // DetailChart.swift: the Details header has it too
             }
         }
     }
