@@ -9,6 +9,7 @@ final class Model: ObservableObject {
     @Published var sys = SysMem()
     @Published var history = History()
     @Published var mark = Mark.saved()  // Mark.swift; set it with setMark, which saves it
+    var markAsked = false  // markNow: the next scan with the panel open takes the mark
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
     var windowOpen = false { didSet { if windowOpen != oldValue { schedule(); refresh() } } }  // Details: scans as the panel does
@@ -60,6 +61,7 @@ final class Model: ObservableObject {
             let s = systemMem()
             DispatchQueue.main.async {
                 self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
+                if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
             }
         }

@@ -73,7 +73,10 @@ func markHelp(_ m: Mark, _ d: Mark.Delta) -> String {
 
 extension Model {
     /// The header's flag and Settings > Mark Memory Now. Again: the old mark is replaced.
-    func markNow() { if !groups.isEmpty { setMark(Mark(groups, ram: sys.ram)) } }
+    /// From a new scan with the panel open, not the groups on show: just after the panel opens
+    /// they come from a closed scan (other users' processes at 0 MB before top runs, no orphans
+    /// split out), and the mark would keep those numbers until the next mark.
+    func markNow() { markAsked = true; refresh() }
 
     func setMark(_ m: Mark?) {
         mark = m
