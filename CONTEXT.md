@@ -59,7 +59,7 @@ The kernel's memory pressure level: Normal, Warning or Critical, as in Activity 
 A group's memory rose by 25% and 300 MB or more across 15 min or more, and mostly rose (a straight line fits with R² ≥ 0.8, 10 samples or more). From the RAM history: the last hour, one sample each 15 s at most, groups of 50 MB or more, in RAM only.
 
 **Mark**:
-The memory of each group (10 MB or more) and the RAM at one moment, taken from a scan with the panel open. One mark at a time, kept across restarts. Rows then show the change: "new", or "+320 MB" / "−1.1 GB" for 50 MB or more. A group under 10 MB at the mark reads as new.
+The memory of each group (10 MB or more) and the RAM at one moment, taken from a scan with the panel open. One mark at a time, kept across restarts. The header flag turns it on and off (filled = on); the line's ✕ also clears it; Settings > Mark Memory Now replaces it with a new one. Rows then show the change: "new", or "+320 MB" / "−1.1 GB" for 50 MB or more. A group under 10 MB at the mark reads as new.
 
 **Freed**:
 The memory of the groups that Stop, Stop All, Auto-stop and Quit When Idle ended, as each held at its stop, added up since the first stop. A group whose processes all were in its last Stop counts once. An idle quit counts only when the app has quit within 10 s. Recent Actions lists the last 20.

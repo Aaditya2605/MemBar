@@ -51,6 +51,7 @@ enum Drive {
             return c
         } ?? []
         await openPanel(d)
+        await mark(d)
         await keys(d)
         await details(d)
         await inspect()  // Inspect.swift
@@ -74,6 +75,18 @@ enum Drive {
         check(!d.model.groups.isEmpty, "the list has rows: \(d.model.groups.count) groups")
         check(!editing(w), "the focus is not in the search field: \(responder(w))")
         shot("1-open", w)
+    }
+
+    /// The header flag's action, on and off: a filled flag that marked again looked stuck on.
+    @MainActor static func mark(_ d: Delegate) async {
+        d.model.toggleMark()
+        check(await until(5) { d.model.mark != nil }, "the flag sets a mark (from the next open scan)")
+        d.model.toggleMark()
+        check(d.model.mark == nil && UserDefaults.standard.data(forKey: "mark") == nil, "the filled flag clears it, also on disk")
+        d.model.toggleMark()
+        d.model.clearMark()  // before that scan ends
+        let n = scans
+        check(await until(5) { scans > n } && d.model.mark == nil, "a mark cleared while its scan runs does not come back")
     }
 
     /// 2. Keys through the popover's window, as the keyboard sends them.

@@ -71,11 +71,23 @@ func markHelp(_ m: Mark, _ d: Mark.Delta) -> String {
 }
 
 extension Model {
-    /// The header's flag and Settings > Mark Memory Now. Again: the old mark is replaced.
+    /// The empty flag and Settings > Mark Memory Now (there, again: the old mark is replaced).
     /// From a new scan with the panel open, not the groups on show: just after the panel opens
     /// they come from a closed scan (other users' processes at 0 MB before top runs, no orphans
     /// split out), and the mark would keep those numbers until the next mark.
     func markNow() { markAsked = true; refresh() }
+
+    /// The header flag: on and off. A filled toggle reads as "click to turn off", so it never
+    /// marks again over a mark (that is Settings > Mark Memory Now).
+    func toggleMark() { mark == nil ? markNow() : clearMark() }
+
+    /// The filled flag and the line's ✕. Also drops a mark that is still on its way from a
+    /// scan, else it comes back. The Change column goes with the mark.
+    func clearMark() {
+        markAsked = false
+        setMark(nil)
+        if UserDefaults.standard.string(forKey: "sort") == Sort.change.rawValue { UserDefaults.standard.set(Sort.memory.rawValue, forKey: "sort") }
+    }
 
     func setMark(_ m: Mark?) {
         mark = m
@@ -83,32 +95,31 @@ extension Model {
     }
 }
 
-/// Header button; filled while a mark exists.
+/// Header button: filled while a mark exists (Model.toggleMark).
 struct MarkButton: View {
     @ObservedObject var model: Model
 
     var body: some View {
-        Button { model.markNow() } label: { Image(systemName: model.mark == nil ? "flag" : "flag.fill") }
+        let on = model.mark != nil
+        Button { model.toggleMark() } label: { Image(systemName: on ? "flag.fill" : "flag") }
             .buttonStyle(.borderless)
-            .help(model.mark == nil ? "Mark memory now, to see what changes" : "Mark memory again: changes count from now")
-            .accessibilityLabel("Mark memory")
+            .help(on ? "Clear the mark" : "Mark memory now, to see what changes")
+            .accessibilityLabel(on ? "Clear mark" : "Mark memory")
     }
 }
 
-/// Header line while a mark exists; ✕ clears it.
+/// Header line while a mark exists; ✕ clears it, as the filled flag does.
 struct MarkLine: View {
     @ObservedObject var model: Model
-    @AppStorage("sort") private var sort = Sort.memory
 
     var body: some View {
         if let m = model.mark {
             let d = delta(mark: m, groups: model.groups)
             HStack(spacing: 4) {
                 Text(markSummary(m, ram: model.sys.ram, d)).lineLimit(1).help(markHelp(m, d))
-                Button {
-                    model.setMark(nil)
-                    if sort == .change { sort = .memory }  // its column goes with the mark
-                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary).padding(.horizontal, 3).contentShape(Rectangle()) }
+                Button { model.clearMark() } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).padding(.horizontal, 3).contentShape(Rectangle())
+                }
                     .buttonStyle(.borderless)
                     .help("Clear the mark")
                     .accessibilityLabel("Clear mark")
