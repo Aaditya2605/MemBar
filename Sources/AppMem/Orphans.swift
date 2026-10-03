@@ -43,7 +43,8 @@ func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool
 /// when its app is gone: the responsibility call and Recall keep it in the group of an app
 /// that is still open (the agent's app, the terminal app). Not out of a leftover or an
 /// ignored app's group, where its app is known and quit, not out of the simulator's or the
-/// emulator's (their own groups: the simulator's also when an agent booted it), and not under an ignored name.
+/// emulator's (their own groups: the simulator's also when an agent booted it), not under an ignored name,
+/// and not a VM's own processes (Containers.swift): the dev server next to them in that group still moves.
 /// Then the orphan badge and its Stop: a group named after its own executable, not
 /// ignored, whose processes of `uid` are all orphans. `asLeftover` (Settings): it is a
 /// leftover too, for the dot, the waste total and Stop All.
@@ -51,15 +52,16 @@ func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool
 /// orphan "node" next to it.
 func orphaning(_ groups: [Group], _ orphans: Set<pid_t>, procs: [pid_t: Proc], ignored: [String], asLeftover: Bool,
                uid: uid_t = getuid()) -> [Group] {
-    func name(_ p: Proc) -> String {
-        var t = p
-        for _ in 0..<64 { guard let pp = procs[t.ppid], orphans.contains(pp.pid) else { break }; t = pp }  // 64: a PID loop
-        return appOf(t.path).name
+    /// The name of `p`'s top orphan; nil when `p` or an orphan above it runs a VM (lima's ssh under
+    /// limactl): Stop on its tools would cut the VM off.
+    func name(_ p: Proc) -> String? {
+        var t = p, vm = isVMPath(p.path)
+        for _ in 0..<64 { guard let pp = procs[t.ppid], orphans.contains(pp.pid) else { break }; t = pp; vm = vm || isVMPath(t.path) }  // 64: a PID loop
+        return vm ? nil : appOf(t.path).name
     }
     var gs = groups
-    // Not out of a VM's group (Containers.swift): Stop on its tools would cut the VM off.
-    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator && !gs[i].isEmulator && !gs[i].isVM {
-        let away = gs[i].procs.filter { orphans.contains($0.pid) }.map { ($0, name($0)) }
+    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator && !gs[i].isEmulator {
+        let away = gs[i].procs.filter { orphans.contains($0.pid) }.compactMap { p in name(p).map { (p, $0) } }
             .filter { !ignored.contains($0.1) && "\($0.1)|false" != gs[i].id }
         gs[i].procs.removeAll { p in away.contains { $0.0.pid == p.pid } }
         for (p, n) in away {

@@ -6,13 +6,14 @@ import SwiftUI
 // fell into "macOS" when its responsible process was gone; limactl or vfkit got a group of their
 // own, and, left by a closed terminal, an orphan badge and a Stop. So a VM process goes to the app
 // that owns it, else to "Linux VM" (vmOwner, from ownerPath); a group that runs a VM is never a
-// leftover and never loses its orphans (isLeftover, orphaning), as its app's window is often
-// closed on purpose and Stop would cut the VM off mid-write; and the expanded group shows the
+// leftover and keeps the VM's orphans (isLeftover, orphaning), as its app's window is often
+// closed on purpose and Stop would cut the VM off mid-write; the group's Quit leaves Apple's VM
+// process to its tool (quitProcs); and the expanded group shows the
 // VM's memory with docker's containers under it. Read-only: nothing here starts or stops a
 // container or a VM.
 
 /// Not real files: appOf names their groups. "Linux VM" is an app, so Apple's VM process in it
-/// gets the right-click Quit that it has in Docker's group (maySignal).
+/// gets the process line's Quit that it has in Docker's group (maySignal).
 let linuxVM = "/Library/Application Support/Linux VM/vm"
 /// ponytail: /opt/podman is the Podman installer's, which Podman Desktop runs; a Podman installed
 /// alone there still reads as Podman Desktop, with a blank icon.
@@ -213,6 +214,17 @@ func containersTest() {
     // Orphans (Settings counts them as leftovers): the VM's stay in its group, with no badge and no Stop.
     let o = byName(orphaning(Array(gs.values), [20, 21, 22, 30, 31, 40], procs: procs, ignored: [], asLeftover: true, uid: 501))
     precondition(pids(o["Linux VM"]) == [20, 21, 22, 23, 40, 41] && pids(o["Podman Desktop"]) == [30, 31, 32] && !o.values.contains { $0.isVM && ($0.orphan || $0.leftover) })
+    do {  // A VM started in an open terminal's tab, a dev server left by a closed tab: only the VM's own stay.
+        let tab = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd"), p(10, 1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"), p(11, 10, "/bin/zsh"),
+                                                    p(12, 1, lima), p(13, 12, "/usr/bin/ssh"), p(14, 1, xpc, 2000),
+                                                    p(15, 1, "/opt/homebrew/bin/node"), p(16, 15, "/opt/homebrew/bin/esbuild")])
+        let t = byName(orphaning(group(tab, responsible: { $0 == 1 ? 1 : 10 }), [12, 13, 15, 16], procs: tab, ignored: [], asLeftover: false, uid: 501))
+        precondition(pids(t["Ghostty"]) == [10, 11, 12, 13, 14] && t["Ghostty"]!.isVM && pids(t["node"]) == [15, 16] && t["node"]!.orphan)
+        // The group's Quit with no app to ask: the tools, not Apple's VM process; its own line still can.
+        let vm = gs["Linux VM"]!, alone = Group(name: "Linux VM", isApp: true, procs: [procs[41]!])
+        precondition(Set(quitProcs(vm).map(\.pid)) == [20, 21, 22, 40] && allowed([procs[23]!], in: vm, uid: 501, me: 99).quit)
+        precondition(allowed(alone, app: false, uid: 501, me: 99) == Allowed(pause: true) && Set(quitProcs(gs["Docker"]!).map(\.pid)) == [50, 51])
+    }
 
     // Started in VS Code's terminal: VS Code's while it runs; after it quits, Recall's memory does not make it a leftover.
     let open = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd"), p(60, 1, code), p(61, 60, "/bin/zsh"), p(62, 61, lima), p(63, 1, xpc, 2000),

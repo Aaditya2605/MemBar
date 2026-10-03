@@ -24,12 +24,18 @@ func allowed(_ ps: [Proc], in g: Group, uid: uid_t = getuid(), me: pid_t = getpi
 }
 
 /// `app`: an app runs at the group's .app, so Quit asks it to quit. Without one, Quit
-/// signals the processes.
+/// signals quitProcs.
 func allowed(_ g: Group, app: Bool, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
     var a = allowed(g.procs, in: g, uid: uid, me: me)
-    a.restart = app && g.name != "macOS"; a.quit = a.quit || a.restart
+    a.restart = app && g.name != "macOS"; a.quit = a.restart || allowed(quitProcs(g), in: g, uid: uid, me: me).quit
     return a
 }
+
+/// What the group's Quit signals with no app to ask: not Apple's VM process (Containers.swift).
+/// Its tool (limactl, vfkit, Docker's) powers the guest off cleanly on SIGTERM, and the VM ends
+/// with it; a signal to the VM at the same moment cuts the guest off mid-write. Its own line still
+/// can, as for a VM whose tool is gone.
+func quitProcs(_ g: Group) -> [Proc] { g.procs.filter { !isVMPath($0.path) || !systemPrefixes.contains(where: $0.path.hasPrefix) } }
 
 /// The "paused" badge: all of this user's processes in `g` are stopped.
 func isPaused(_ g: Group, uid: uid_t = getuid()) -> Bool {
@@ -69,9 +75,9 @@ enum Actions {
     }
 
     /// With an app: ask it to quit (it can save first, or cancel), or force it. Without:
-    /// SIGTERM or SIGKILL to the group's processes.
+    /// SIGTERM or SIGKILL to the group's processes, but Apple's VM process (quitProcs).
     static func quit(_ g: Group, _ app: NSRunningApplication?, force: Bool = false) {
-        guard let app else { return send(force ? SIGKILL : SIGTERM, g.procs, in: g) }
+        guard let app else { return send(force ? SIGKILL : SIGTERM, quitProcs(g), in: g) }
         send(SIGCONT, g.procs, in: g)  // a paused app cannot answer; all, as stopped can be old
         _ = force ? app.forceTerminate() : app.terminate()
     }
