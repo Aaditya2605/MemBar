@@ -578,6 +578,9 @@ func selfTest() {
         }
         precondition(stops(groups, c1, at: 10 * m - 1).isEmpty && stops(groups, c1, at: 10 * m) == ["Cursor"])
         precondition(stops(groups, c1, sim: true, at: 10 * m) == ["Cursor", "iOS Simulator"])  // the simulator toggle
+        let emu = Group(name: "Android Emulator", isApp: true, procs: [p(74, 1, "/Users/a/Library/Android/sdk/emulator/emulator", 20).1], leftover: true)
+        precondition(stops([emu], [emu.id: t0], at: 10 * m).isEmpty)  // the same toggle: VS Code runs it with no Android Studio
+        precondition(stops([emu], [emu.id: t0], sim: true, at: 10 * m) == ["Android Emulator"])
         precondition(stops(groups, c1, after: nil, sim: true, at: 9 * h).isEmpty)  // off
         precondition(stops(groups, c1, at: h, uid: 502) == [])  // only other users' processes: Stop cannot act
         precondition(stops(ignoring(groups, ["Cursor"]), c1, at: h).isEmpty)  // ignored: never
