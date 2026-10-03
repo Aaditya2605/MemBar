@@ -45,6 +45,9 @@ final class Model: ObservableObject {
     func refresh(force: Bool = false) {
         let open = self.open
         queue.async { [self] in
+            // A held ⌘R (one action per key repeat) or fast clicks: at most one forced
+            // top/ports/simctl pass in 2 s; the queued rest do only the cheap scan.
+            let force = force && -topAt.timeIntervalSinceNow > 2
             // ponytail: root-process memory from top at most every 30 s, and only
             // with the panel open. The icon needs only this user's processes.
             if open, force || -topAt.timeIntervalSinceNow > 30 { top = topMem(); topAt = Date() }
