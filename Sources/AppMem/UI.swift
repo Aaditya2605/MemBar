@@ -47,6 +47,7 @@ final class Model: ObservableObject {
             if open, force || -portsAt.timeIntervalSinceNow > 10 { ports = listenPorts(procs); portsAt = Date() }
             // Not closed: the map gets old, and the panel shows these groups first when it opens.
             if open { addPorts(&procs, ports) }
+            Sims.update(procs, open: open, force: force)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
@@ -175,7 +176,7 @@ enum Icons {
     private static var cache: [String: NSImage] = [:]
 
     static func of(_ g: Group) -> NSImage? {
-        guard let path = g.bundle ?? (g.isApp ? installed(g.name) : nil) else { return nil }
+        guard let path = g.bundle ?? (g.isApp ? installed(g.isEmulator ? "Android Studio" : g.name) : nil) else { return nil }
         if let i = cache[path] { return i }
         let i = NSWorkspace.shared.icon(forFile: path)
         cache[path] = i
@@ -209,7 +210,7 @@ struct Row: View {
                         Text(g.name).lineLimit(1).truncationMode(.middle)
                         if g.leftover {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
-                                .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
+                                .help(g.isSimulator ? "A device is booted and Simulator is not open" : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open")
                         }
                         if let why = g.respawns {  // an icon: a second word would squeeze the name
                             Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
@@ -250,6 +251,7 @@ struct Row: View {
             .contextMenu { GroupMenu(g: g) }
             if expanded || only != nil {
                 if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
+                if g.isSimulator { DeviceLines(g: g) }
                 ProcList(g: g, procs: only ?? g.procs)
             }
         }
@@ -260,7 +262,7 @@ struct Row: View {
         if let i = Icons.of(g) {
             Image(nsImage: i).resizable()
         } else {
-            Image(systemName: g.name == "macOS" ? "apple.logo" : g.isSimulator ? "iphone" : "terminal")
+            Image(systemName: g.name == "macOS" ? "apple.logo" : g.isSimulator ? "iphone" : g.isEmulator ? "smartphone" : "terminal")
                 .foregroundStyle(.secondary)
         }
     }
@@ -354,6 +356,7 @@ func snapshot(to path: String, query: String) {
     procs = scan(top: top)
     addCPU(&procs, prev: prev, seconds: 1)
     addPorts(&procs, listenPorts(procs))
+    Sims.booted = Sims.read(procs.values.filter { $0.name == "launchd_sim" })  // not update(): it posts to main, too late for the layout
     model.groups = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }

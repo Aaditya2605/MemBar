@@ -36,6 +36,7 @@ let systemPrefixes = ["/System/", "/usr/", "/sbin/", "/bin/", "/Library/Apple/"]
 /// Group name for the executable path of a group's top process.
 func appOf(_ path: String) -> (name: String, isApp: Bool) {
     if path.contains("CoreSimulator") || path == "launchd_sim" { return ("iOS Simulator", false) }
+    if isEmulatorPath(path) { return ("Android Emulator", true) }  // Google's app, not a plain executable: it can be a leftover
     // Deviation from the prototype: Apple's own apps (/System/Applications/Weather.app
     // widgets and the like) keep their name but are never leftovers. macOS starts them.
     let isApp = !systemPrefixes.contains { path.hasPrefix($0) }
@@ -83,6 +84,9 @@ func isLeftover(_ g: Group, open: Set<String>) -> Bool {
     if g.isSimulator {  // launchd_sim = a booted device; agents boot them with no window
         return !open.contains("simulator") && g.procs.contains { $0.name == "launchd_sim" }
     }
+    // ponytail: Stop's SIGKILL after 3 s can cut the emulator's quickboot snapshot save
+    // short; its next boot is then cold.
+    if g.isEmulator { return !open.contains { $0.hasPrefix("android studio") } }  // Android Studio Preview.app too
     return g.isApp && !isOpen(g.name, open)
 }
 
@@ -434,6 +438,46 @@ func selfTest() {
         precondition(allowed(procs[11]!, in: cursor, uid: 501, me: 99) == Allowed(quit: true, pause: true))
         precondition(summaryText(cursor) == "Cursor: 800 MB, CPU –, 2 processes\n  500 MB  CPU –  PID 10  node\n  300 MB  CPU –  PID 11  node")
         precondition(summaryText(pg["Cursor"]!).hasSuffix("PID 10  node\n  300 MB  CPU –  PID 11  node  :3000"))
+    }
+
+    do {  // simulator devices, the Android emulator group
+        let a = "193A1049-1F4C-44E8-83CB-BFD1ED9F19CA", b = "0D9C2F1E-7B3A-4C8D-9E6F-112233445566", devs = "/Users/a/Library/Developer/CoreSimulator/Devices/"
+        precondition(udid(in: devs + a + "/data/Containers/Bundle/Application/X/My.app/My") == a)
+        precondition(udid(in: "launchd_sim " + devs + a + "/data/var/run/launchd_bootstrap.plist") == a)
+        precondition(udid(in: "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/x") == nil && udid(in: devs + "x/data") == nil)
+        precondition(runtimeName("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5" && runtimeName("watchOS-11-0-1") == "watchOS 11.0.1")
+        let json = """
+            {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+              {"udid": "\(a)", "name": "iPhone 17 Pro", "state": "Booted", "isAvailable": true},
+              {"udid": "C0FFEE00-0000-0000-0000-000000000000", "name": "iPhone SE", "state": "Shutdown"}],
+             "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [{"udid": "\(b)", "name": "iPad Air", "state": "Booted"}],
+             "com.apple.CoreSimulator.SimRuntime.tvOS-26-0": []}}
+            """
+        precondition(bootedDevices(Data(json.utf8)) == [SimDevice(udid: b, name: "iPad Air", runtime: "iOS 18.2"),
+                                                       SimDevice(udid: a, name: "iPhone 17 Pro", runtime: "iOS 26.5")])
+        precondition(bootedDevices(Data("xcrun: error".utf8)).isEmpty)
+        // A: its launchd_sim (100) and the tree under it; B: only by the UDID in a path; C: no process left.
+        let sims = [p(100, 1, "launchd_sim", 10), p(101, 100, "/RuntimeRoot/SpringBoard.app/SpringBoard", 90), p(102, 101, "/RuntimeRoot/usr/libexec/x", 5),
+                    p(103, 1, "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/CoreSimulatorService", 30),
+                    p(104, 1, devs + b + "/data/Containers/Bundle/Application/Y/Y.app/Y", 200),
+                    p(105, 1, devs + "AAAAAAAA-0000-0000-0000-000000000000/data/z", 1)].map(\.1)  // a device simctl does not list
+        let da = SimDevice(udid: a, name: "A", runtime: "iOS 26.5", launchd: 100), db = SimDevice(udid: b, name: "B", runtime: "iOS 18.2")
+        let lines = simLines(sims, devices: [da, db, SimDevice(udid: "C", name: "C", runtime: "iOS 26.5", launchd: 999)])
+        precondition(lines.map { $0.device?.name ?? "Shared" } == ["B", "A", "Shared"])  // by memory, Shared last
+        precondition(lines.map { $0.procs.map(\.pid) } == [[104], [100, 101, 102], [103, 105]])
+        precondition(simLines(sims, devices: []).isEmpty && simLines([sims[3]], devices: [da]).isEmpty)  // no device line: no Shared alone
+
+        let studio = "/Applications/Android Studio.app/Contents/MacOS/studio", sdk = "/Users/a/Library/Android/sdk/emulator/"
+        precondition(appOf(sdk + "qemu/darwin-aarch64/qemu-system-aarch64") == ("Android Emulator", true) && !isCLI(sdk + "emulator"))
+        let emu = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(70, 1, studio, 900), p(71, 70, sdk + "emulator", 20),
+                                                    p(72, 71, sdk + "qemu/darwin-aarch64/qemu-system-aarch64", 3000), p(73, 72, sdk + "crashpad_handler", 5)])
+        let withStudio = group(emu, responsible: { [71: 70, 72: 70, 73: 70][$0] ?? $0 }).first { $0.isEmulator }!
+        precondition(!withStudio.leftover && withStudio.procs.map(\.pid) == [72, 71, 73])  // its own group, not Android Studio's
+        var quit = emu
+        quit[70] = nil
+        let alone = group(quit, responsible: { $0 }).first { $0.isEmulator }!
+        precondition(alone.leftover && alone.isApp && alone.mem == 3025 << 20)
+        precondition(!isLeftover(alone, open: ["android studio preview"]) && isLeftover(alone, open: ["xcode", "studio"]))
     }
 
     // Process tree: nesting, memory order among siblings, orphans are roots, loops end.
