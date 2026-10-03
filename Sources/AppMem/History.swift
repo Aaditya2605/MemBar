@@ -15,7 +15,7 @@ struct History {
     static let cap = 240  // 60 min at one sample each 15 s
 
     /// One sample per scan, but at most one each 15 s: the open panel scans every 3 s.
-    mutating func add(_ groups: [Group], sys: (ram: Int64, swap: Int64), at now: Date = Date()) {
+    mutating func add(_ groups: [Group], sys: SysMem, at now: Date = Date()) {
         // ponytail: wall clock, so a clock set back stops new samples until it catches up.
         if let last = samples.last, now.timeIntervalSince(last.at) < 15 { return }
         let big = groups.filter { $0.mem >= 50 << 20 }
@@ -126,7 +126,7 @@ extension History {
     /// `HISTORY=1 AppMem --snapshot ...`: an hour of made-up samples around the live
     /// numbers, so the chart, badge and sparkline show without an hour of waiting.
     /// The largest group grows from half its size, so it gets the badge.
-    static func demo(_ groups: [Group], sys: (ram: Int64, swap: Int64)) -> History {
+    static func demo(_ groups: [Group], sys: SysMem) -> History {
         var h = History()
         let now = Date(), big = groups.max { $0.mem < $1.mem }?.id
         for i in 0..<cap {
@@ -163,12 +163,12 @@ func historySelfTest() {
     var h = History()
     let g = [Group(name: "Big", isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/b", mem: 60 * mb)]),
              Group(name: "Small", isApp: true, procs: [Proc(pid: 3, ppid: 1, uid: 501, path: "/s", mem: 10 * mb)])]
-    h.add(g, sys: (1, 0), at: t0)
-    h.add(g, sys: (1, 0), at: t0 + 5)  // under 15 s after the last one: skipped
+    h.add(g, sys: SysMem(), at: t0)
+    h.add(g, sys: SysMem(), at: t0 + 5)  // under 15 s after the last one: skipped
     precondition(h.samples.count == 1 && h.samples[0].groups == ["Big|true": 60 * mb])
-    for i in 1...600 { h.add(g, sys: (1, 0), at: t0 + Double(i) * 15) }  // 2.5 h, one each 15 s
+    for i in 1...600 { h.add(g, sys: SysMem(), at: t0 + Double(i) * 15) }  // 2.5 h, one each 15 s
     precondition(h.samples.count == History.cap && h.points("Big|true").count == History.cap)
     precondition(h.points("Small|true").isEmpty)
-    for i in 1...120 { h.add(g, sys: (1, 0), at: t0 + 9000 + Double(i) * 60) }  // panel closed: one a minute
+    for i in 1...120 { h.add(g, sys: SysMem(), at: t0 + 9000 + Double(i) * 60) }  // panel closed: one a minute
     precondition(h.samples.count == 61)  // only the last hour
 }
