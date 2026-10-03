@@ -200,18 +200,21 @@ private let nsPerTick: Double = { var i = mach_timebase_info(); mach_timebase_in
 
 private let host = mach_host_self()  // once: each call adds a port reference
 
-/// RAM in use as Activity Monitor counts "Memory Used" (app + wired + compressed),
-/// and swap in use.
-func systemMem() -> (ram: Int64, swap: Int64) {
+/// Activity Monitor's memory numbers (see SysMem), swap in use, and the memory pressure.
+func systemMem() -> SysMem {
     var vm = vm_statistics64()
     var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
     let ok = withUnsafeMutablePointer(to: &vm) {
         $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics64(host, HOST_VM_INFO64, $0, &count) }
     } == KERN_SUCCESS
-    let pages = Int64(vm.internal_page_count) - Int64(vm.purgeable_count) + Int64(vm.wire_count) + Int64(vm.compressor_page_count)
     var swap = xsw_usage(), size = MemoryLayout<xsw_usage>.size
     if sysctlbyname("vm.swapusage", &swap, &size, nil, 0) != 0 { swap = xsw_usage() }
-    return (ok ? pages * Int64(vm_kernel_page_size) : 0, Int64(swap.xsu_used))
+    func int(_ name: String) -> Int32? {
+        var v: Int32 = 0, size = MemoryLayout<Int32>.size
+        return sysctlbyname(name, &v, &size, nil, 0) == 0 ? v : nil
+    }
+    return SysMem(ok ? vm : vm_statistics64(), page: Int64(vm_kernel_page_size), swap: Int64(swap.xsu_used),
+                  level: int("kern.memorystatus_vm_pressure_level"), free: int("kern.memorystatus_level"))
 }
 
 /// Every process. PROC_PIDT_SHORTBSDINFO works for all users (PROC_PIDTBSDINFO
@@ -262,6 +265,8 @@ func printGroups() {
     let groups = group(scan(top: topMem()), responsible: responsible).sorted { $0.mem > $1.mem }
     let sys = systemMem()
     print("apps \(fmt(groups.reduce(0) { $0 + $1.mem })), RAM \(fmt(sys.ram)), swap \(fmt(sys.swap))")
+    print("pressure \(sys.pressure.label.lowercased()) \(sys.usedPct)%; RAM = app \(fmt(sys.app)) + wired \(fmt(sys.wired))",
+          "+ compressed \(fmt(sys.compressed)); cached files \(fmt(sys.cached))")
     for g in groups.prefix(20) {
         let flag = g.leftover ? (g.isSimulator ? "   <-- DEVICE RUNNING, SIMULATOR NOT OPEN" : "   <-- APP NOT OPEN") : ""
         print("\n" + g.name.padding(toLength: max(28, g.name.count), withPad: " ", startingAt: 0),
@@ -324,5 +329,17 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+
+    var vm = vm_statistics64()  // in pages of 16 KB
+    vm.internal_page_count = 100; vm.purgeable_count = 10; vm.wire_count = 20; vm.compressor_page_count = 5; vm.external_page_count = 30
+    let sm = SysMem(vm, page: 16384, swap: 7, level: 4, free: 30)
+    precondition(sm.app == 90 * 16384 && sm.ram == 115 * 16384 && sm.cached == 40 * 16384 && sm.swap == 7)
+    precondition(sm.pressure == .critical && sm.usedPct == 70 && SysMem().usedPct == 0 && SysMem(level: 3).pressure == .normal)
+    precondition(Pressure(rawValue: 2)?.label == "Warning" && Pressure.warning.color == .yellow && Pressure.critical.color == .red)
+    precondition(menuState(.critical, waste: 1).dot == .systemRed && menuState(.warning, waste: 1).dot == .systemOrange)
+    precondition(menuState(.normal, waste: 1).dot == .systemYellow && menuState(.normal, waste: 0).dot == nil)
+    precondition(menuState(.normal, waste: 0).desc == "AppMem" && menuState(.normal, waste: 0).tip == "AppMem: no leftovers")
+    precondition(menuState(.warning, waste: 1 << 30).desc == "AppMem, memory pressure warning, leftovers found")
+    precondition(menuState(.warning, waste: 1 << 30).tip == "Memory pressure: Warning\nLeftovers use 1.00 GB")
     print("ok")
 }

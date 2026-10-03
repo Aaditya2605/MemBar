@@ -6,7 +6,7 @@ import SwiftUI
 
 final class Model: ObservableObject {
     @Published var groups: [Group] = []
-    @Published var sys: (ram: Int64, swap: Int64) = (0, 0)
+    @Published var sys = SysMem()
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
     private var timer: Timer?
@@ -88,6 +88,7 @@ struct Panel: View {
                     Text("Apps \(fmt(model.total))").help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
                 TextField("Search apps, processes or PIDs", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -219,6 +220,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
     let model = Model()
+    // The kernel calls when the pressure level changes: the dot need not wait for the 60 s scan.
+    let pressureEvents = DispatchSource.makeMemoryPressureSource(eventMask: .all, queue: .main)
 
     func applicationDidFinishLaunching(_ note: Notification) {
         guard let button = item.button else { return }
@@ -231,10 +234,13 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onUpdate = { [weak self] in self?.updateIcon() }
         model.schedule()
         model.refresh()
+        pressureEvents.setEventHandler { [weak self] in self?.model.refresh() }
+        pressureEvents.resume()
     }
 
     // No size text in the menu bar: it read as the total RAM use. A yellow dot
-    // means "leftovers found"; the tooltip and the panel give the size.
+    // means "leftovers found", orange or red memory pressure (see menuState); the
+    // tooltip and the panel give the size.
     static let chip: NSImage = {
         let i = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "AppMem")!
         i.isTemplate = true
@@ -243,7 +249,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // Not a template (it has a color), so it draws the chip in the menu bar text
     // color itself. cacheMode .never: draw again when the menu bar goes dark/light.
-    static let junkIcon: NSImage = {
+    static func dotIcon(_ color: NSColor, _ description: String) -> NSImage {
         let i = NSImage(size: chip.size, flipped: false) { r in
             chip.draw(in: r)
             NSColor.labelColor.set()
@@ -252,19 +258,22 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NSGraphicsContext.current?.compositingOperation = .clear  // gap around the dot
             NSBezierPath(ovalIn: dot.insetBy(dx: -1, dy: -1)).fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
-            NSColor.systemYellow.setFill()
+            color.setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
         i.cacheMode = .never
-        i.accessibilityDescription = "AppMem, leftovers found"
+        i.accessibilityDescription = description
         return i
-    }()
+    }
 
     func updateIcon() {
-        let waste = model.waste
-        item.button?.image = waste > 0 ? Self.junkIcon : Self.chip
-        item.button?.toolTip = waste > 0 ? "Leftovers use \(fmt(waste))" : "AppMem: no leftovers"
+        let s = menuState(model.sys.pressure, waste: model.waste)
+        // The description names the state, so a new image only when the state changes.
+        if item.button?.image?.accessibilityDescription != s.desc {
+            item.button?.image = s.dot.map { Self.dotIcon($0, s.desc) } ?? Self.chip
+        }
+        item.button?.toolTip = s.tip
     }
 
     @objc func toggle() {
