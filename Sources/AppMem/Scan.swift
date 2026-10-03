@@ -675,6 +675,24 @@ func selfTest() {
     precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
                  && othersHelp(byName["Cursor"]!, uid: 501) == "")
 
+    do {  // Inspect.swift: the environment in KERN_PROCARGS2, the secret rule, the tools' arguments and output
+        let argc2 = withUnsafeBytes(of: Int32(2)) { Array($0) }
+        let buf = argc2 + Array("/bin/node\0\0\0\0node\0a.js\0PATH=/x\0API_KEY=k=v\0EMPTY=\0\0\0\0ptr_munge=\0\0\0main_stack=\0".utf8)
+        precondition(argvEnv(buf).argv == ["node", "a.js"] && argvEnv(buf).env == ["PATH=/x", "API_KEY=k=v", "EMPTY="])  // not the kernel's strings
+        precondition(argvEnv(argc2 + Array("/bin/sleep\0\0/bin/sleep\0600\0".utf8)).env.isEmpty)  // Apple's own: no environment
+        let mine = argvEnv(procArgs(getpid()) ?? []).env  // its own is always readable; the kernel's strings after it are not in it
+        precondition(argvEnv([1, 0]) == ([], []) && !mine.isEmpty && !mine.contains { $0.hasPrefix("ptr_munge=") })
+        let env = envPairs(["b=2", "A=1=x", "API_KEY=k", "NOEQ", "a=3"])
+        precondition(env.map(\.name) == ["A", "API_KEY", "NOEQ", "a", "b"] && env[0].value == "1=x" && env[2].value == "")
+        precondition(["GITHUB_TOKEN", "api_key", "SSH_AUTH_SOCK", "Session_Id", "db_password", "COOKIE", "aws_secret_access_key"].allSatisfy(isSecret))
+        precondition(!["PATH", "HOME", "PWD", "USER", ""].contains(where: isSecret))
+        precondition(envText(env, show: false) == "A=1=x\nAPI_KEY=•••\nNOEQ=\na=3\nb=2" && envText(env, show: true).contains("\nAPI_KEY=k\n"))
+        precondition(sampleArgs(42) == ["42", "3", "-mayDie", "-file", "/dev/stdout"] && lsofArgs(42) == ["-nP", "-p", "42"])
+        // stdout; else stderr; a tool that takes too long is stopped (it is this test's own sleep)
+        precondition(toolText("/bin/echo", ["hi"], timeout: 5) == "hi\n" && toolText("/bin/ls", ["/nope-x"], timeout: 5).hasPrefix("ls: /nope-x"))
+        precondition(toolText("/bin/sleep", ["9"], timeout: 0.2).hasPrefix("Stopped: it took more than") && toolText("/nope", [], timeout: 1) == "/nope did not start.")
+    }
+
     do {  // keyboard: the next selection, the selection after a refresh, keys that type, Stop
         let a = RowID(group: "A"), a1 = RowID(group: "A", pid: 1), b = RowID(group: "B"), ids = [a, a1, b]
         precondition(move(nil, in: ids, by: 1) == a && move(nil, in: ids, by: -1) == b && move(nil, in: [], by: 1) == nil)
