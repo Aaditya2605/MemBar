@@ -429,5 +429,16 @@ func selfTest() {
     let mixed = Group(name: "X", isApp: true, procs: [procs[10]!, Proc(pid: 2, ppid: 1, uid: 0, path: "/usr/sbin/d", mem: 1)])
     precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
                  && othersHelp(byName["Cursor"]!, uid: 501) == "")
+
+    // Settings: refresh choices, the ignore list, the list filters
+    precondition(refreshSeconds(2) == 2 && refreshSeconds(5) == 5 && refreshSeconds(0) == 3 && refreshSeconds(-1) == 3)
+    let ig = ignoring(groups, ["Cursor"])
+    precondition(ig.filter(\.leftover).map(\.name) == ["iOS Simulator"] && ig.map(\.name) == groups.map(\.name))
+    precondition(ignoring(groups, ["cursor"]).first { $0.name == "Cursor" }!.leftover)  // exact names only
+    let mix = [byName["Claude"]!, byName["macOS"]!, Group(name: "Tiny", isApp: true, procs: [p(60, 1, "/t", 9).1]),
+               Group(name: "TinyLeft", isApp: true, procs: [p(61, 1, "/u", 1).1], leftover: true)]  // macOS: 10 MB, not under
+    precondition(visible(mix, hideSmall: true, showMacOS: true).shown.map(\.name) == ["Claude", "macOS", "TinyLeft"])
+    precondition(visible(mix, hideSmall: true, showMacOS: false).small.map(\.name) == ["Tiny"])
+    precondition(visible(mix, hideSmall: false, showMacOS: false).shown.count == 3)
     print("ok")
 }
