@@ -10,6 +10,8 @@ final class Model: ObservableObject {
     @Published var history = History()
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
+    var windowOpen = false { didSet { if windowOpen != oldValue { schedule(); refresh() } } }  // Details: scans as the panel does
+    private var open: Bool { panelOpen || windowOpen }
     private var timer: Timer?
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
@@ -32,14 +34,14 @@ final class Model: ObservableObject {
 
     func schedule() {
         timer?.invalidate()
-        let every = panelOpen ? refreshSeconds(UserDefaults.standard.refreshEvery) : 60
+        let every = open ? refreshSeconds(UserDefaults.standard.refreshEvery) : 60
         timer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] _ in self?.refresh() }
-        timer?.tolerance = panelOpen ? 0.5 : 10
+        timer?.tolerance = open ? 0.5 : 10
     }
 
     /// `force`: the Refresh button, also reads root-process memory from top again.
     func refresh(force: Bool = false) {
-        let open = panelOpen
+        let open = self.open
         queue.async { [self] in
             // ponytail: root-process memory from top at most every 30 s, and only
             // with the panel open. The icon needs only this user's processes.
@@ -212,7 +214,8 @@ struct Row: View {
         let quitIdle = g.leftover ? nil : idleRule(g.name).map { "Quits when not used for \(hours($0))" }
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                Button { expanded.toggle() } label: {
+                // A double-click opens Details; its second toggle undoes the first.
+                Button { expanded.toggle(); if isDoubleClick() { Details.show(g) } } label: {
                     HStack(spacing: 6) {
                         Image(systemName: expanded || only != nil ? "chevron.down" : "chevron.right")
                             .font(.caption2).frame(width: 10)
@@ -258,6 +261,7 @@ struct Row: View {
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.orphan ? ", orphan" : g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
                 .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
+                .accessibilityAction(named: "Show Details") { Details.show(g) }
                 if g.leftover || g.orphan {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -366,8 +370,9 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
 #if DEBUG
 /// `AppMem --snapshot out.png [query]` (debug builds): the panel with live data as
-/// a PNG, to check the layout without a click on the menu bar.
-func snapshot(to path: String, query: String) {
+/// a PNG, to check the layout without a click on the menu bar. `make`: the view to
+/// draw, from the filled model (Details draws its window this way too).
+func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height: 540), _ make: (Model) -> V) {
     _ = NSApplication.shared
     let model = Model()
     let top = topMem()
@@ -383,8 +388,8 @@ func snapshot(to path: String, query: String) {
     model.groups = orphans.mark(model.groups, procs, open: true)
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
-    let view = NSHostingView(rootView: Panel(model: model, query: query))
-    view.frame = NSRect(x: 0, y: 0, width: 400, height: 540)
+    let view = NSHostingView(rootView: make(model))
+    view.frame = NSRect(origin: .zero, size: size)
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
     if ProcessInfo.processInfo.environment["DARK"] != nil { window.appearance = NSAppearance(named: .darkAqua) }
     window.contentView = view
@@ -392,14 +397,15 @@ func snapshot(to path: String, query: String) {
     window.orderFrontRegardless()  // SwiftUI draws text only in a window that is ordered in
     RunLoop.main.run(until: Date() + 1)  // SwiftUI lays out on the run loop
     // cacheDisplay misses SwiftUI's text layers; render the layer tree instead.
+    let w = Int(size.width) * 2, h = Int(size.height) * 2
     guard let layer = view.layer, let rep = NSBitmapImageRep(
-        bitmapDataPlanes: nil, pixelsWide: 800, pixelsHigh: 1080, bitsPerSample: 8, samplesPerPixel: 4,
+        bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8, samplesPerPixel: 4,
         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
         let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return }
     let dark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     ctx.cgContext.setFillColor(CGColor(gray: dark ? 0.15 : 0.96, alpha: 1))
-    ctx.cgContext.fill(CGRect(x: 0, y: 0, width: 800, height: 1080))
-    ctx.cgContext.translateBy(x: 0, y: 1080)  // layers are top-down here
+    ctx.cgContext.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    ctx.cgContext.translateBy(x: 0, y: CGFloat(h))  // layers are top-down here
     ctx.cgContext.scaleBy(x: 2, y: -2)
     layer.render(in: ctx.cgContext)
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
