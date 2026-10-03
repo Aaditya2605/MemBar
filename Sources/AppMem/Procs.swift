@@ -82,7 +82,7 @@ struct ProcList: View {
                 HStack(spacing: 6) {  // 6 as in the group row: the CPU column lines up
                     Text(r.proc.name).lineLimit(1).truncationMode(.middle)
                     // Not wrapped, the name truncates instead. The group badge needs all of them paused.
-                    if r.proc.stopped { Text("paused").font(.caption2.bold()).fixedSize() }
+                    if r.proc.stopped { Text("paused").flag().fixedSize() }
                     // Next to "paused" only the icon, as in the group row: indented, the name has no room left.
                     if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports, network: r.proc.stopped, limit: r.proc.stopped ? 0 : 2) }
                     Spacer()
@@ -91,7 +91,7 @@ struct ProcList: View {
                     Text(fmt(r.proc.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                 }
                 .padding(.leading, CGFloat(min(r.depth, 4)) * 10)  // capped: deep chains keep room for the name
-                .highlight(nav.sel == id, lead: 38)
+                .highlight(nav.sel == id, lead: 44)  // 38 + 6: the group row's left edge
                 .contentShape(Rectangle())  // tooltip, click and right-click in the gaps too
                 .onTapGesture { nav.click(id) }
                 // It hides the chip's own tooltip (an outer .help wins), so the ports are in it.

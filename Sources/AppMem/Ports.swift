@@ -77,8 +77,7 @@ func addPorts(_ procs: inout [pid_t: Proc], _ ports: [pid_t: [UInt16]]) {
 
 /// Small tag ":3000 :9229 +1"; `network` adds the icon (a group row, a paused process). Two ports at
 /// most, so the name keeps its room; the tooltip has all of them. `limit` 0 = the
-/// icon only, next to a paused badge. One port next to the growing arrow, else a
-/// short name like "macOS" truncates.
+/// icon only. A group row shows the most of it that fits (Row, showsPorts).
 struct PortChip: View {
     let ports: [UInt16]
     var network = false

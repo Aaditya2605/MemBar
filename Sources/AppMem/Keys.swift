@@ -114,13 +114,14 @@ extension Panel {
 }
 
 extension View {
-    /// The selected line: the accent color at low opacity, from `lead` points left of the
-    /// line, so a process line's highlight starts where its group's does.
-    func highlight(_ on: Bool, lead: CGFloat = 0) -> some View {
+    /// The selected line: the accent color at low opacity, reaching past the line by `lead`,
+    /// `trail`, `top` and `bottom` points (negative: inside it), so every line's highlight
+    /// spans the same width: a process line's starts where its group's does.
+    func highlight(_ on: Bool, lead: CGFloat = 6, trail: CGFloat = 6, top: CGFloat = 1, bottom: CGFloat = 1) -> some View {
         background {
             if on {
                 RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.2))
-                    .padding(.leading, -6 - lead).padding(.trailing, -6).padding(.vertical, -1)
+                    .padding(.leading, -lead).padding(.trailing, -trail).padding(.top, -top).padding(.bottom, -bottom)
             }
         }
     }

@@ -409,6 +409,16 @@ func selfTest() {
     // Ports: network byte order in, IPv4 + IPv6 of one port = one port.
     precondition(ports(fromLPorts: [Int32(UInt16(3000).bigEndian), Int32(UInt16(9229).bigEndian), Int32(UInt16(3000).bigEndian)]) == [3000, 9229])
     precondition(portsText([3000, 9229]) == ":3000 :9229" && portsText([1, 2, 3, 4], limit: 2) == ":1 :2 +2" && portsText([]) == "")
+    do {  // the row's port chip: only where a port tells what the group is
+        var cli = Group(name: "node", isApp: false, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/opt/node", mem: 1)])
+        cli.procs[0].ports = [3000]
+        var app = cli; app.bundle = "/Applications/Spotify.app"
+        var left = app; left.leftover = true
+        let mac = Group(name: "macOS", isApp: false, procs: cli.procs)
+        precondition(showsPorts(cli) && !showsPorts(app) && !showsPorts(mac) && showsPorts(left))
+        cli.procs[0].ports = []
+        precondition(!showsPorts(cli))
+    }
     precondition(portMatch([3000, 9229], "3000") && portMatch([3000], ":3000") && !portMatch([3000], "300") && !portMatch([3000], ":"))
     precondition(portsHelp([80]) == "Listens on TCP port :80" && portsHelp([3000, 9229]) == "Listens on TCP ports :3000 :9229")
     precondition(portsLabel([]) == "" && portsLabel([80]) == ", listens on port 80" && portsLabel([80, 443]) == ", listens on ports 80, 443")

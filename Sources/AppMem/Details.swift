@@ -91,7 +91,7 @@ struct DetailsView: View {
             HStack(spacing: 8) {
                 Text(detailsSummary(rows.map(\.p), total: g?.procs.count ?? 0)).monospacedDigit()
                 if let g, g.leftover || g.orphan {  // as the row's badge
-                    Text(g.orphan ? "orphan" : "leftover").font(.caption.bold()).foregroundStyle(g.leftover ? .orange : .secondary)
+                    Text(g.orphan ? "orphan" : "leftover").font(.caption.bold()).foregroundStyle(g.leftover ? Color.leftover : .secondary)
                         .help(flagHelp(g))
                 }
                 Spacer()

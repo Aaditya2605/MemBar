@@ -126,11 +126,14 @@ struct Panel: View {
                 HStack {
                     Text("AppMem").font(.headline)
                     Spacer()
-                    if model.waste > 0 {
-                        Text("Leftovers: \(fmt(model.waste))").foregroundStyle(.orange)
-                        Button("Stop All") { model.stopAll() }
-                            .controlSize(.small)
-                            .help("Stop every leftover: \(model.groups.filter(\.leftover).map(\.name).joined(separator: ", "))")
+                    if model.waste > 0 {  // the total and its action as one unit, a little apart from the tools
+                        HStack(spacing: 6) {
+                            Text("Leftovers \(fmt(model.waste))").foregroundStyle(Color.leftover).monospacedDigit()
+                            Button("Stop All") { model.stopAll() }
+                                .controlSize(.small)
+                                .help("Stop every leftover: \(model.groups.filter(\.leftover).map(\.name).joined(separator: ", "))")
+                        }
+                        .padding(.trailing, 4)
                     }
                     MarkButton(model: model)
                     Button { model.refresh(force: true) } label: { Image(systemName: "arrow.clockwise") }
@@ -167,10 +170,10 @@ struct Panel: View {
                 Spacer(minLength: 4)
                 if model.mark != nil { column("Change", .change) }
                 column("Procs", .procs)
-                column("CPU", .cpu).frame(width: 40, alignment: .trailing)
-                column("Memory", .memory).frame(width: 62, alignment: .trailing)
+                column("CPU", .cpu, width: 40)
+                column("Memory", .memory, width: 62)
             }
-            .font(.caption).padding(.horizontal, 10).padding(.vertical, 4)
+            .font(.caption).padding(.horizontal, 10)
             Divider()
             let s = shown, typed = query.trimmingCharacters(in: .whitespaces)  // shown sorts: once per render
             ScrollView {
@@ -215,9 +218,11 @@ struct Panel: View {
         }
     }
 
-    func column(_ title: String, _ s: Sort) -> some View {
+    /// The header's height and the column's width are the target, not only the word.
+    func column(_ title: String, _ s: Sort, width: CGFloat? = nil) -> some View {
         Button { sort = s } label: {
             Text(title).fontWeight(sort == s ? .semibold : .regular).foregroundStyle(sort == s ? .primary : .secondary)
+                .frame(width: width, alignment: .trailing).padding(.vertical, 4).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Sort by \(title.lowercased())")
@@ -270,45 +275,50 @@ struct Row: View {
         }
         // A double-click opens Details; its second toggle undoes the first.
         let open = { nav.click(RowID(group: g.id)); nav.toggle(g.id); if isDoubleClick() { Details.show(g) } }
+        let isOpen = expanded || only != nil
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+            // The row's margins are inside its buttons: a click anywhere on the row opens it, not
+            // only on the text. Open, no margin below: the process lines are its targets there.
+            HStack(spacing: 0) {
                 Button(action: open) {
                     HStack(spacing: 6) {
-                        Image(systemName: expanded || only != nil ? "chevron.down" : "chevron.right")
+                        Image(systemName: isOpen ? "chevron.down" : "chevron.right")
                             .font(.caption2).frame(width: 10)
                         icon.frame(width: 16, height: 16)
                         Text(g.name).lineLimit(1).truncationMode(.middle)
                         if g.orphan {  // orange only when counted as a leftover (Settings)
-                            Text("orphan").font(.caption2.bold()).foregroundStyle(g.leftover ? .orange : .secondary).help(flagHelp(g))
+                            Text("orphan").flag(g.leftover ? .leftover : .secondary).help(flagHelp(g))
                         } else if g.leftover {
-                            Text("leftover").font(.caption2.bold()).foregroundStyle(.orange).help(flagHelp(g))
+                            Text("leftover").flag(.leftover).help(flagHelp(g))
                         }
                         if let why = g.respawns {  // an icon: a second word would squeeze the name
-                            Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
-                                .help(why).accessibilityLabel("Respawns")
+                            Image(systemName: "arrow.triangle.2.circlepath").flag(.leftover).help(why).accessibilityLabel("Respawns")
                         }
                         if let quitIdle {
-                            Image(systemName: "timer").font(.caption2).foregroundStyle(.secondary)
-                                .help(quitIdle + ". Right-click to change.").accessibilityLabel("Quits when idle")
+                            Image(systemName: "timer").flag().help(quitIdle + ". Right-click to change.").accessibilityLabel("Quits when idle")
                         }
-                        if paused {
-                            Text("paused").font(.caption2.bold()).foregroundStyle(.secondary)
-                                .help("Paused: its processes do not run. Right-click to resume.")
-                        }
+                        if paused { Text("paused").flag().help("Paused: its processes do not run. Right-click to resume.") }
                         UsageBadge(g: g)
-                        if let growing {
-                            Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
-                                .help("Memory is growing: \(growing)")
-                        }
+                        if let growing { Image(systemName: "arrow.up.right").flag(.red).help("Memory is growing: \(growing)") }
                         LimitBell(g: g)
-                        // Next to a paused badge only the icon: the name keeps its room. None on a
-                        // leftover or orphan: with the badge and Stop, even the icon cuts the name that Stop is for.
-                        // With a change since the mark only the icon: else the change seldom has room.
-                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused || change != nil ? 0 : growing == nil && quitIdle == nil ? 2 : 1) }
+                        // Only where a port tells what the group is (a dev server, a leftover's or orphan's
+                        // socket); an app's own ports are noise here, and stay in its lines, the search and VoiceOver.
+                        // Gone before the name truncates: all ports, one, the icon, then nothing. After the
+                        // age badge (-1): how stale a leftover is matters more to Stop than its socket.
+                        if showsPorts(g) {
+                            ViewThatFits(in: .horizontal) {
+                                PortChip(ports: g.ports, network: true)
+                                PortChip(ports: g.ports, network: true, limit: 1)
+                                PortChip(ports: g.ports, network: true, limit: 0)
+                                Color.clear.frame(width: 0, height: 0)
+                            }
+                            .layoutPriority(-2)
+                        }
                         // ponytail: on a leftover or orphan row Stop sits between the change and "Procs", so the
                         // change is a Stop width left of its header; a fixed Stop slot would take it from every name.
                         Spacer(minLength: 4).overlay(alignment: .trailing) { ChangeText(label: change, procs: g.procs.count) }
                     }
+                    .padding(.leading, 10).padding(.trailing, 6).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -323,31 +333,37 @@ struct Row: View {
                         .disabled(!canStop(g))
                         .help(others)
                         .accessibilityLabel("Stop \(g.name)")
+                        // The labels' margins, so it stays centered on the name; not a target: a near miss does nothing.
+                        .padding(.trailing, 6).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
                 }
                 // After Stop, as in DeviceLine: the numbers line up with the header and the process lines.
                 // The row's label already reads them to VoiceOver.
                 Button(action: open) {
                     HStack(spacing: 6) {
                         // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
-                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
+                        // Fixed: a count squeezed by Stop wrapped to two lines ("1" over "9").
+                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit().fixedSize().help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
                         Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                     }
+                    .padding(.trailing, 10).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityHidden(true)
             }
             .contextMenu { GroupMenu(g: g) }
-            .highlight(picked)
-            if expanded || only != nil {
-                if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
-                if g.isSimulator { DeviceLines(g: g) }
-                ProcList(g: g, procs: only ?? g.procs, nav: nav)
+            .highlight(picked, lead: -4, trail: -4, top: -2, bottom: isOpen ? 1 : -2)  // where it was with the margins outside
+            if isOpen {
+                VStack(alignment: .leading, spacing: 2) {
+                    if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
+                    if g.isSimulator { DeviceLines(g: g) }
+                    ProcList(g: g, procs: only ?? g.procs, nav: nav)
+                }
+                .padding(.horizontal, 10).padding(.bottom, 3)
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 3)
     }
 
     @ViewBuilder var icon: some View {
@@ -358,6 +374,24 @@ struct Row: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+/// The row's port chip: on a leftover, an orphan, or a command-line group (no .app, not
+/// macOS), where a port tells what it is (`node` on :3000). An app's own ports would be noise.
+func showsPorts(_ g: Group) -> Bool { !g.ports.isEmpty && (g.leftover || g.orphan || g.bundle == nil && g.name != "macOS") }
+
+extension View {
+    /// One style for a row's flags, words and icons alike (leftover, orphan, paused, respawns,
+    /// growing, quit timer, limit bell); the color says how much it matters.
+    func flag(_ color: Color = .secondary) -> some View { font(.caption2.weight(.semibold)).foregroundStyle(color) }
+}
+
+extension Color {
+    /// Leftover orange. systemOrange text is about 2:1 on the light panel, too faint for a
+    /// 10 pt word; a darker orange there is about 3.7:1. Dark mode keeps systemOrange (about 7:1).
+    static let leftover = Color(nsColor: NSColor(name: nil) { a in
+        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .systemOrange : NSColor(srgbRed: 0.78, green: 0.38, blue: 0, alpha: 1)
+    })
 }
 
 /// Why a group has its orphan or leftover badge: the badge's tooltip (row and Details),
@@ -464,13 +498,14 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     model.groups = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
     var orphans = Orphans()
     model.groups = orphans.mark(model.groups, procs, open: true)
+    if ProcessInfo.processInfo.environment["CROWD"] != nil { model.groups = Group.crowd + model.groups }
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
     model.mark = ProcessInfo.processInfo.environment["MARK"] != nil ? .demo(model.groups, sys: model.sys) : nil  // never the saved one
     let view = NSHostingView(rootView: make(model))
     view.frame = NSRect(origin: .zero, size: size)
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
-    if ProcessInfo.processInfo.environment["DARK"] != nil { window.appearance = NSAppearance(named: .darkAqua) }
+    if let d = ProcessInfo.processInfo.environment["DARK"] { window.appearance = NSAppearance(named: d == "0" ? .aqua : .darkAqua) }  // DARK=0: light
     window.contentView = view
     window.setFrameOrigin(NSPoint(x: -20000, y: -20000))  // off screen, but ordered in:
     window.orderFrontRegardless()  // SwiftUI draws text only in a window that is ordered in
@@ -488,5 +523,28 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     ctx.cgContext.scaleBy(x: 2, y: -2)
     layer.render(in: ctx.cgContext)
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+}
+
+extension Group {
+    /// `CROWD=1 AppMem --snapshot ...`: made-up groups with each badge (leftover, respawns,
+    /// orphan, paused, ports), to check a crowded panel. Never stopped: a snapshot only draws.
+    /// The first process has AppMem's own PID, for a real age; the rest PIDs that cannot exist.
+    static var crowd: [Group] {
+        let mb: Int64 = 1 << 20
+        func ps(_ path: String, _ mem: Int64, _ n: Int = 1, ports: [UInt16] = [], stopped: Bool = false) -> [Proc] {
+            (0..<n).map { i in
+                var p = Proc(pid: i == 0 ? getpid() : 900_000 + pid_t(i), ppid: 1, uid: getuid(), path: path, mem: mem * mb)
+                p.ports = i == 0 ? ports : []; p.stopped = stopped
+                return p
+            }
+        }
+        var cursor = Group(name: "Cursor", isApp: true, procs: ps(NSHomeDirectory() + "/Library/Application Support/Cursor/node", 110, 19, ports: [3000, 9229]), leftover: true)
+        cursor.respawns = "Came back after Stop: launchd starts it again"
+        var node = Group(name: "node", isApp: false, procs: ps("/opt/homebrew/bin/node", 420, ports: [5173]))
+        node.orphan = true
+        var docker = Group(name: "Docker", isApp: true, procs: ps("/Applications/Docker.app/Contents/MacOS/com.docker.backend", 900, 2, ports: [2375], stopped: true))
+        docker.bundle = "/Applications/Docker.app"
+        return [cursor, node, docker]
+    }
 }
 #endif

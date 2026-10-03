@@ -96,9 +96,9 @@ struct RAMChart: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(label)
             .help(label)
-        } else {  // same height, so the list does not jump when the second sample comes
-            Text("RAM history starts in 15 s").font(.caption2).foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, minHeight: 36)
+        } else {  // same height and no words: the list does not jump when the second sample comes,
+            // and for the minute after launch the slot stays quiet (closed, a sample comes each 60 s)
+            Color.clear.frame(height: 36).accessibilityHidden(true)
         }
     }
 }
@@ -115,7 +115,7 @@ struct Sparkline: View {
         HStack(spacing: 6) {
             Chart(points.indices, id: \.self) { i in
                 AreaMark(x: .value("Time", points[i].at), y: .value("Memory", Double(points[i].mem)))
-                    .foregroundStyle(color.opacity(0.15))
+                    .foregroundStyle(color.opacity(growing ? 0.15 : 0.08))  // flat is the usual case: a line, not a gray bar
                 LineMark(x: .value("Time", points[i].at), y: .value("Memory", Double(points[i].mem)))
                     .foregroundStyle(color).lineStyle(StrokeStyle(lineWidth: 1))
             }
