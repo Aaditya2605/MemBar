@@ -7,6 +7,7 @@ import SwiftUI
 final class Model: ObservableObject {
     @Published var groups: [Group] = []
     @Published var sys: (ram: Int64, swap: Int64) = (0, 0)
+    @Published var history = History()
     var onUpdate: () -> Void = {}
     var panelOpen = false { didSet { schedule(); refresh() } }
     private var timer: Timer?
@@ -34,7 +35,7 @@ final class Model: ObservableObject {
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = group(procs, responsible: responsible), s = systemMem()
-            DispatchQueue.main.async { self.groups = g; self.sys = s; self.onUpdate() }
+            DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s); self.onUpdate() }
         }
     }
 
@@ -88,6 +89,7 @@ struct Panel: View {
                     Text("Apps \(fmt(model.total))").help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                RAMChart(samples: model.history.samples)
                 TextField("Search apps, processes or PIDs", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
@@ -108,7 +110,7 @@ struct Panel: View {
                     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
                     ForEach(shown) { g in
                         let hits = q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q)
-                        Row(g: g, only: hits) { model.stopGroup(g) }
+                        Row(g: g, only: hits, points: model.history.points(g.id)) { model.stopGroup(g) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -154,10 +156,12 @@ enum Icons {
 struct Row: View {
     let g: Group
     let only: [Proc]?  // search hits inside the group: show these, expanded
+    var points: [(at: Date, mem: Int64)] = []  // memory history: growing badge, sparkline
     let stop: () -> Void
     @State private var expanded = false
 
     var body: some View {
+        let growing = growthText(points)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Button { expanded.toggle() } label: {
@@ -170,6 +174,10 @@ struct Row: View {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
+                        if let growing {
+                            Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
+                                .help("Memory is growing: \(growing)")
+                        }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -179,7 +187,7 @@ struct Row: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")")
+                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -187,6 +195,7 @@ struct Row: View {
                 }
             }
             if expanded || only != nil {
+                if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
                 ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
                     HStack {
                         Text(p.name).lineLimit(1).truncationMode(.middle)
@@ -292,6 +301,7 @@ func snapshot(to path: String, query: String) {
     addCPU(&procs, prev: prev, seconds: 1)
     model.groups = group(procs, responsible: responsible)
     model.sys = systemMem()
+    if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
     let view = NSHostingView(rootView: Panel(model: model, query: query))
     view.frame = NSRect(x: 0, y: 0, width: 400, height: 540)
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
