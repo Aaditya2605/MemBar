@@ -47,6 +47,16 @@ func udid(in s: String) -> String? {
     return UUID(uuidString: id) != nil ? id : nil
 }
 
+/// A launchd_sim's device set and UDID, from its argument <set>/<UDID>/data/var/run/
+/// launchd_bootstrap.plist. Any set: the default one, Xcode Previews, XCTest clones;
+/// `simctl` without --set acts only on the default one.
+func simDevice(_ argv: [String]) -> (set: String, udid: String)? {
+    let tail = "/data/var/run/launchd_bootstrap.plist"
+    guard let a = argv.first(where: { $0.hasSuffix(tail) }) else { return nil }
+    let dev = String(a.dropLast(tail.count)) as NSString
+    return UUID(uuidString: dev.lastPathComponent) != nil ? (dev.deletingLastPathComponent, dev.lastPathComponent) : nil
+}
+
 /// The lines of the expanded simulator group: each device with its processes (by the
 /// UDID in their path, else their launchd_sim parent chain), by memory, then "Shared"
 /// (device nil) for the rest: CoreSimulatorService, simdiskimaged. A device with no

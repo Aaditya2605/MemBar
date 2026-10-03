@@ -270,14 +270,17 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
 func same(_ p: Proc) -> Bool { shortInfo(p.pid).map { path(of: p.pid, comm: comm($0)) == p.path } ?? false }
 
 /// App leftover or orphan: SIGTERM, then SIGKILL after 3 s for the ones that still run.
-/// Simulator: shut down the booted devices. Never the macOS group, never other users.
+/// Simulator: shut down each booted device, in its own set. Never the macOS group, never other users.
 func stop(_ g: Group) {
     guard g.leftover || g.orphan, g.name != "macOS" else { return }
     if g.isSimulator {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        p.arguments = ["simctl", "shutdown", "all"]  // = each booted device
-        try? p.run()
+        for l in g.procs where l.name == "launchd_sim" && l.uid == getuid() {
+            guard let d = simDevice(argv(procArgs(l.pid) ?? [])) else { continue }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            p.arguments = ["simctl", "--set", d.set, "shutdown", d.udid]
+            try? p.run()
+        }
         return
     }
     let targets = g.procs.filter { $0.uid == getuid() && $0.pid > 1 && $0.pid != getpid() && same($0) }
@@ -513,6 +516,10 @@ func selfTest() {
         let a = "193A1049-1F4C-44E8-83CB-BFD1ED9F19CA", b = "0D9C2F1E-7B3A-4C8D-9E6F-112233445566", devs = "/Users/a/Library/Developer/CoreSimulator/Devices/"
         precondition(udid(in: devs + a + "/data/Containers/Bundle/Application/X/My.app/My") == a)
         precondition(udid(in: "launchd_sim " + devs + a + "/data/var/run/launchd_bootstrap.plist") == a)
+        let prev = "/Users/a/Library/Developer/Xcode/UserData/Previews/Simulator Devices"
+        precondition(simDevice(["launchd_sim", devs + a + "/data/var/run/launchd_bootstrap.plist"])! == (String(devs.dropLast()), a))
+        precondition(simDevice(["launchd_sim", prev + "/" + b + "/data/var/run/launchd_bootstrap.plist"])! == (prev, b))
+        precondition(simDevice(["launchd_sim"]) == nil && simDevice([prev + "/x/data/var/run/launchd_bootstrap.plist"]) == nil)
         precondition(udid(in: "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/x") == nil && udid(in: devs + "x/data") == nil)
         precondition(runtimeName("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5" && runtimeName("watchOS-11-0-1") == "watchOS 11.0.1")
         let json = """

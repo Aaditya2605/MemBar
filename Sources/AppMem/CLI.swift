@@ -139,7 +139,7 @@ func runCLI(_ args: [String]) -> Int32? {
                 fputs("skip \(g.name): its processes belong to other users\n", stderr); continue
             }
             print(dryRun ? "would stop" : "stop", g.name, fmt(g.mem),
-                  g.isSimulator ? "xcrun simctl shutdown all" : mine.joined(separator: " "), separator: "\t")
+                  g.isSimulator ? "xcrun simctl shutdown (each booted device)" : mine.joined(separator: " "), separator: "\t")
             if !dryRun { stop(g); stopped = true }
         }
         // ponytail: a fixed wait, not a handle on the follow-up. stop() sends SIGKILL

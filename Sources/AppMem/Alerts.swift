@@ -99,10 +99,10 @@ func limitHelp(_ g: Group, limits: [String: Int] = UserDefaults.standard.limits,
 }
 
 extension UserDefaults {
-    // Same name as the key, so Alerts can observe(\.limits). Only positive MB: `defaults
-    // write` can store anything.
+    // Same name as the key, so Alerts can observe(\.limits). Only 1 MB...16 TB: `defaults
+    // write` can store anything, and a larger value overflows `<< 20` and `* 9`.
     @objc dynamic var limits: [String: Int] {
-        (dictionary(forKey: "limits") ?? [:]).compactMapValues { ($0 as? Int).flatMap { $0 > 0 ? $0 : nil } }
+        (dictionary(forKey: "limits") ?? [:]).compactMapValues { ($0 as? Int).flatMap { (1...1 << 24).contains($0) ? $0 : nil } }
     }
 }
 
@@ -328,6 +328,9 @@ func alertsTest() {
     precondition(run([], 360) == [] && run([g("Slack", 2100)], 420) == ["limit Slack"])
     precondition(run([], 480) == [] && run([g("Slack", 2100), g("Other", 9000)], 540, with: off) == [] && st.over == ["Slack"])
     precondition(run([g("Slack", 2100)], 600) == [])  // crossed while off: turned on, it stays quiet
+    let d = UserDefaults(suiteName: "AppMem.selfTest")!  // registered only: in memory, no file
+    d.register(defaults: ["limits": ["A": 2048, "B": 1 << 24, "C": 0, "D": 1 << 40, "E": "x"]])
+    precondition(d.limits == ["A": 2048, "B": 1 << 24])  // 1 << 40 MB: limit * 9 traps
 
     // Ignored groups never alert: not as a leftover (ignoring() unflags it), not growing, not over a limit.
     st = AlertState()
