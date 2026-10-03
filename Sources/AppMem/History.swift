@@ -112,8 +112,8 @@ struct Sparkline: View {
             }
             .chartXAxis(.hidden).chartYAxis(.hidden)
             .chartYScale(domain: 0...Double(max(top, 1)) * 1.15)  // headroom: a flat line is not an underline
-            .frame(width: 180, height: 16)  // fixed, so the sparklines line up
-            Text(text).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+            .frame(width: 150, height: 16)  // fixed, so the sparklines line up; 150 leaves room for "10.24 GB to 12.50 GB"
+            Text(text).font(.caption2).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
