@@ -473,6 +473,57 @@ func selfTest() {
     var back = groups
     back[0].respawns = "x"  // Cursor came back after Stop: the respawn icon is a badge too
     precondition(ignoring(back, ["Cursor"])[0].respawns == nil && ignoring(back, [])[0].respawns == "x")
+
+    do {  // Auto.swift: auto-stop, Quit When Idle, the log. Fake data only: these rules act.
+        let t0 = Date(timeIntervalSince1970: 1_000_000), m: TimeInterval = 60
+        precondition(autoStopAfter(10) == 600 && autoStopAfter(60) == 3600 && autoStopAfter(0) == nil && autoStopAfter(5) == nil)
+        // The clock starts at first sight, not at process start: a fresh AppMem stops nothing at once.
+        let c0 = leftoverClock(groups, since: [:], now: t0)
+        precondition(c0 == ["Cursor|true": t0, "iOS Simulator|false": t0])
+        precondition(autoStops(groups, since: c0, after: 600, simulator: true, now: t0, uid: 501).isEmpty)
+        let c1 = leftoverClock(groups, since: c0, now: t0 + 10 * m)
+        precondition(c1 == c0)  // carried over
+        func stops(_ gs: [Group], _ c: [String: Date], after: TimeInterval? = 600, sim: Bool = false, at: TimeInterval, uid: uid_t = 501) -> [String] {
+            autoStops(gs, since: c, after: after, simulator: sim, now: t0 + at, uid: uid).map(\.name)
+        }
+        precondition(stops(groups, c1, at: 10 * m - 1).isEmpty && stops(groups, c1, at: 10 * m) == ["Cursor"])
+        precondition(stops(groups, c1, sim: true, at: 10 * m) == ["Cursor", "iOS Simulator"])  // the simulator toggle
+        precondition(stops(groups, c1, after: nil, sim: true, at: 9 * h).isEmpty)  // off
+        precondition(stops(groups, c1, at: h, uid: 502) == [])  // only other users' processes: Stop cannot act
+        precondition(stops(ignoring(groups, ["Cursor"]), c1, at: h).isEmpty)  // ignored: never
+        precondition(leftoverClock(ignoring(groups, ["Cursor"]), since: c1, now: t0 + h)["Cursor|true"] == nil)
+        var again = groups
+        again[0].respawns = "x"  // macOS starts it again: no stop each wait
+        precondition(stops(again, c1, at: h).isEmpty)
+        again[0].respawns = nil
+        again[0].leftover = false  // its app opened for one scan: the clock starts again
+        let c2 = leftoverClock(again, since: c1, now: t0 + 20 * m)
+        precondition(c2["Cursor|true"] == nil && leftoverClock(groups, since: c2, now: t0 + 21 * m)["Cursor|true"] == t0 + 21 * m)
+        precondition(stoppable(byName["iOS Simulator"]!, uid: 7) && stoppable(byName["Cursor"]!, uid: 501) && !stoppable(byName["Cursor"]!, uid: 502))
+
+        // Quit When Idle: Claude is open (1300 MB); Cursor is a leftover; 5 min is no menu choice.
+        let rules = ["Claude": 60, "Cursor": 60, "WhatsApp": 5, "macOS": 60]
+        let last: [String: Date] = ["Claude": t0 - 2 * h, "Cursor": t0 - 2 * h, "WhatsApp": t0 - 9 * h, "macOS": t0 - 9 * h]
+        func quits(_ gs: [Group], front: String? = nil, tried: [String: Date] = [:], at: Date = t0) -> [String] {
+            idleQuits(gs, rules: rules, lastFront: { last[$0] }, frontmost: front, tried: tried, now: at).map(\.name)
+        }
+        precondition(quits(groups) == ["Claude"] && quits(groups, at: t0 - h - 1).isEmpty)  // idle 2 h; 59:59
+        precondition(quits(groups, front: "Claude").isEmpty)  // frontmost
+        precondition(idleQuits(groups, rules: rules, lastFront: { _ in nil }, frontmost: nil, tried: [:], now: t0).isEmpty)  // unknown
+        precondition(quits(groups, tried: ["Claude": t0 - 2 * h]).isEmpty && quits(groups, tried: ["Claude": t0 - 5 * h]) == ["Claude"])  // one ask per idle stretch
+        var pausedClaude = claude
+        pausedClaude.procs[0].stopped = true  // it cannot answer the quit
+        precondition(quits([pausedClaude]).isEmpty && quits(ignoring([claude], ["Claude"])) == ["Claude"])
+        precondition(idleRule("Claude", rules) == 60 && idleRule("WhatsApp", rules) == nil && idleRule("Nope", rules) == nil)
+        precondition(hours(60) == "1 hour" && hours(240) == "4 hours" && hours(120).capitalized == "2 Hours")
+
+        // The log: newest first, the last 20; a Stop All of several keeps the list order.
+        let es = (1...25).map { Freed.Entry(at: t0 + Double($0), name: "G\($0)", mem: 1, how: "Stop") }
+        let log = es.reduce([Freed.Entry]()) { logged($0, [$1]) }
+        precondition(log.count == 20 && log.first?.name == "G25" && log.last?.name == "G6")
+        precondition(logged([es[0]], [es[1], es[2]]).map(\.name) == ["G2", "G3", "G1"])
+        precondition(logLine(Freed.Entry(at: t0, name: "Cursor", mem: 800 << 20, how: "Auto-stop")).hasSuffix("  Auto-stop: Cursor, 800 MB"))
+    }
     recallTest()
     print("ok")
 }

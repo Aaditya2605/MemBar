@@ -22,7 +22,8 @@ final class Model: ObservableObject {
         // Settings apply at once, also an ignore list that the right-click menu writes.
         // Main queue: KVO reports on the writer's thread, and the timer needs the main run loop.
         watches = [UserDefaults.standard.observe(\.ignored) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } },
-                   UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } }]
+                   UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } },
+                   UserDefaults.standard.observe(\.quitIdle) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } }]
     }
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
@@ -50,13 +51,17 @@ final class Model: ObservableObject {
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
-            DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate() }
+            DispatchQueue.main.async {
+                self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
+                Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
+            }
         }
     }
 
-    /// Row's Stop and Stop All: stop, then watch the groups for a respawn (Recall).
-    func stopGroups(_ gs: [Group]) {
+    /// Row's Stop, Stop All and auto-stop: stop, then watch the groups for a respawn (Recall).
+    func stopGroups(_ gs: [Group], how: String = "Stop") {
         gs.forEach(stop)
+        Freed.record(gs.filter { stoppable($0) }, how: how)
         queue.async { [self] in gs.forEach { recall.didStop($0) } }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { self.refresh() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 55) { self.refresh() }  // a respawn shows within 60 s
@@ -152,6 +157,7 @@ struct Panel: View {
                     .font(.caption).foregroundStyle(.secondary).monospacedDigit().padding(.vertical, 4)
                     .help("Hidden by Settings > Hide Groups Under 10 MB")
             }
+            FreedLine()
         }
         .frame(width: 400, height: 540)
     }
@@ -199,6 +205,7 @@ struct Row: View {
 
     var body: some View {
         let growing = growthText(points), paused = isPaused(g), others = othersHelp(g)
+        let quitIdle = g.leftover ? nil : idleRule(g.name).map { "Quits when not used for \(hours($0))" }
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Button { expanded.toggle() } label: {
@@ -215,6 +222,10 @@ struct Row: View {
                             Image(systemName: "arrow.triangle.2.circlepath").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(why).accessibilityLabel("Respawns")
                         }
+                        if let quitIdle {
+                            Image(systemName: "timer").font(.caption2).foregroundStyle(.secondary)
+                                .help(quitIdle + ". Right-click to change.").accessibilityLabel("Quits when idle")
+                        }
                         if paused {
                             Text("paused").font(.caption2.bold()).foregroundStyle(.secondary)
                                 .help("Paused: its processes do not run. Right-click to resume.")
@@ -226,7 +237,7 @@ struct Row: View {
                         }
                         // Next to a paused badge only the icon: the name keeps its room. None on a
                         // leftover: with the badge and Stop, even the icon cuts the name that Stop is for.
-                        if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
+                        if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil && quitIdle == nil ? 2 : 1) }
                         Spacer(minLength: 4)
                         // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
@@ -238,7 +249,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, others.isEmpty ? nil : others]
+                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, quitIdle, others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 if g.leftover {
                     Button("Stop", action: stop)
