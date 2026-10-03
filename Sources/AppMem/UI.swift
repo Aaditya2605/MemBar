@@ -78,6 +78,7 @@ final class Model: ObservableObject {
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
                 Rules.check(g)  // Restart When Above, Pause When in Background
+                Containers.shared.poll(g, open: self.panelOpen)  // docker stats for an open VM row
             }
         }
     }
@@ -368,6 +369,7 @@ struct Row: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
                     if g.isSimulator { DeviceLines(g: g) }
+                    if g.isVM { VMLines(g: g) }  // Containers.swift
                     ProcList(g: g, procs: only ?? g.procs, nav: nav)
                 }
                 .padding(.horizontal, 10).padding(.bottom, 3)
@@ -379,7 +381,7 @@ struct Row: View {
         if let i = Icons.of(g) {
             Image(nsImage: i).resizable()
         } else {
-            Image(systemName: g.name == "macOS" ? "apple.logo" : g.isSimulator ? "iphone" : g.isEmulator ? "smartphone" : "terminal")
+            Image(systemName: g.name == "macOS" ? "apple.logo" : g.isSimulator ? "iphone" : g.isEmulator ? "smartphone" : g.isVM ? "server.rack" : "terminal")
                 .foregroundStyle(.secondary)
         }
     }
@@ -512,6 +514,7 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     var orphans = Orphans()
     model.groups = orphans.mark(model.groups, procs, open: true)
     if ProcessInfo.processInfo.environment["CROWD"] != nil { model.groups = Group.crowd + model.groups }
+    if ProcessInfo.processInfo.environment["CROWD"] != nil { model.groups.append(Containers.demo()) }  // Containers.swift
     model.sys = systemMem()
     model.slots = keepSlots(model.groups, kept: [:])
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
