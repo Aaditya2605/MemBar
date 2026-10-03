@@ -22,16 +22,22 @@ func tree(_ procs: [Proc]) -> [(proc: Proc, depth: Int)] {
     return out
 }
 
-/// The arguments in KERN_PROCARGS2 data: int argc, the exec path, NUL padding,
-/// then argc NUL-terminated arguments, then the environment (not read).
-func argv(_ buf: [UInt8]) -> [String] {
-    guard buf.count > 4 else { return [] }
+/// The arguments and the environment in KERN_PROCARGS2 data: int argc, the exec path, NUL
+/// padding, argc NUL-terminated arguments, then the "NAME=value" strings up to an empty one.
+/// After that come more NULs and the kernel's own strings (ptr_munge=, executable_file=): not
+/// the environment. macOS leaves the environment out for its own programs (/bin/zsh, Finder).
+func argvEnv(_ buf: [UInt8]) -> (argv: [String], env: [String]) {
+    guard buf.count > 4 else { return ([], []) }
     let argc = max(0, Int(buf.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }))
     var i = buf[4...].firstIndex(of: 0) ?? buf.endIndex
     while i < buf.endIndex, buf[i] == 0 { i += 1 }
-    return buf[i...].split(separator: 0, maxSplits: argc, omittingEmptySubsequences: false)
-        .prefix(argc).map { String(decoding: $0, as: UTF8.self) }
+    let parts = buf[i...].split(separator: 0, omittingEmptySubsequences: false)
+    return (parts.prefix(argc).map { String(decoding: $0, as: UTF8.self) },
+            parts.dropFirst(argc).prefix { !$0.isEmpty }.map { String(decoding: $0, as: UTF8.self) })
 }
+
+/// The arguments alone: the command line, the simulator's device.
+func argv(_ buf: [UInt8]) -> [String] { argvEnv(buf).argv }
 
 /// Tooltip text: the full path (argv[0] is often only a name), then the arguments.
 /// A process that sets its title (node's process.title: Next.js, npm) writes it over

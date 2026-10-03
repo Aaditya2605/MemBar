@@ -53,6 +53,7 @@ enum Drive {
         await openPanel(d)
         await keys(d)
         await details(d)
+        await inspect()  // Inspect.swift
         quickMenu(d)
         await urls(d)
         notifications()

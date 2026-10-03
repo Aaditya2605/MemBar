@@ -174,6 +174,7 @@ struct ProcMenu: View {
         Button("Reveal in Finder") { Actions.reveal(p.path) }.disabled(!p.path.hasPrefix("/"))
         Button("Copy Path") { Actions.copy(p.path) }
         Button("Copy PID") { Actions.copy(String(p.pid)) }
+        InspectMenu(p: p)  // Inspect.swift: Sample, Open Files and Ports, Environment
     }
 }
 
