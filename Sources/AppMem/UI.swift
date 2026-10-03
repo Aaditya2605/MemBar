@@ -83,6 +83,8 @@ struct Panel: View {
     @AppStorage("hideSmall") private var hideSmall = false
     @AppStorage("showMacOS") private var showMacOS = true
     @State var query = ""
+    @StateObject var nav = Nav()  // selection and open groups (Keys.swift)
+    @FocusState var focus: Field?
 
     /// The Settings filters thin the plain list; a search looks at every group.
     var listed: (shown: [Group], small: [Group]) { visible(model.groups, hideSmall: hideSmall, showMacOS: showMacOS) }
@@ -138,6 +140,9 @@ struct Panel: View {
                 TextField("Search apps, processes, PIDs or :ports", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
+                    .focused($focus, equals: .search)
+                    .onKeyPress(keys: [.upArrow, .downArrow]) { step($0.key == .downArrow ? 1 : -1) }
+                    .help("Keys: ↑ ↓ select a row, → ← open and close it, ⌘C copy, ⌘⌫ Stop a leftover or orphan, ⌘F search, Esc clear")
             }
             .padding(10)
             Divider()
@@ -156,12 +161,16 @@ struct Panel: View {
                     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
                     let d = model.mark.map { delta(mark: $0, groups: model.groups) }
                     ForEach(shown) { g in
-                        let hits = q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q)
-                        Row(g: g, only: hits, points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }) { model.stopGroups([g]) }
+                        Row(g: g, only: hits(g, q), points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }, nav: nav) {
+                            model.stopGroups([g])
+                        }
                     }
                 }
                 .padding(.vertical, 4)
             }
+            .focusable().focusEffectDisabled().focused($focus, equals: .list)
+            .onKeyPress(action: listKey)
+            .scrolls(to: nav.sel)
             let small = query.trimmingCharacters(in: .whitespaces).isEmpty ? listed.small : []
             if !small.isEmpty {
                 Divider()
@@ -172,6 +181,15 @@ struct Panel: View {
             FreedLine()
         }
         .frame(width: 400, height: 540)
+        .onKeyPress(.escape, action: escape)
+        .onChange(of: rowIDs) { _, ids in nav.sel = kept(nav.sel, in: ids) }
+        .onAppear { focus = .list; nav.focusList = { focus = .list } }
+        // Each time the popover opens (onAppear runs only the first time), else AppKit gives the
+        // focus to a button: arrows work at once, and typing still searches. Only the panel's
+        // popover: the pressure breakdown is an NSPopover too.
+        .onReceive(NotificationCenter.default.publisher(for: NSPopover.didShowNotification)) { n in
+            if n.object as? NSPopover === (NSApp.delegate as? Delegate)?.popover { focus = .list }
+        }
     }
 
     func column(_ title: String, _ s: Sort) -> some View {
@@ -182,6 +200,9 @@ struct Panel: View {
         .help("Sort by \(title.lowercased())")
     }
 }
+
+/// The search hits inside `g`, shown expanded; nil with no query or when the group's name matches.
+func hits(_ g: Group, _ q: String) -> [Proc]? { q.isEmpty || g.name.lowercased().contains(q) ? nil : matching(g, q) }
 
 /// The processes of `g` whose name contains `q`, or whose PID or a port is `q`.
 func matching(_ g: Group, _ q: String) -> [Proc] {
@@ -213,11 +234,12 @@ struct Row: View {
     let only: [Proc]?  // search hits inside the group: show these, expanded
     var points: [(at: Date, mem: Int64)] = []  // memory history: growing badge, sparkline
     var change: (text: String, color: Color, help: String)?  // since the mark (Mark.swift)
+    @ObservedObject var nav: Nav  // open or not, selected or not (Keys.swift)
     let stop: () -> Void
-    @State private var expanded = false
+    var expanded: Bool { nav.expanded.contains(g.id) }
 
     var body: some View {
-        let growing = growthText(points), paused = isPaused(g), others = othersHelp(g)
+        let growing = growthText(points), paused = isPaused(g), others = othersHelp(g), picked = nav.sel == RowID(group: g.id)
         // Only where the right-click menu shows the rule and idleQuits acts: an open app at the group's .app.
         let quitIdle = idleRule(g.name).flatMap { m in
             g.leftover || g.ignored || Actions.runningApp(g) == nil ? nil : "Quits when not used for \(hours(m))"
@@ -225,7 +247,7 @@ struct Row: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 // A double-click opens Details; its second toggle undoes the first.
-                Button { expanded.toggle(); if isDoubleClick() { Details.show(g) } } label: {
+                Button { nav.click(RowID(group: g.id)); nav.toggle(g.id); if isDoubleClick() { Details.show(g) } } label: {
                     HStack(spacing: 6) {
                         Image(systemName: expanded || only != nil ? "chevron.down" : "chevron.right")
                             .font(.caption2).frame(width: 10)
@@ -272,18 +294,20 @@ struct Row: View {
                 .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), change?.help, others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 .accessibilityAction(named: "Show Details") { Details.show(g) }
+                .accessibilityAddTraits(picked ? .isSelected : [])
                 if g.leftover || g.orphan {
                     Button("Stop", action: stop)
                         .controlSize(.small)
-                        .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
+                        .disabled(!canStop(g))
                         .help(others)
                 }
             }
             .contextMenu { GroupMenu(g: g) }
+            .highlight(picked)
             if expanded || only != nil {
                 if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
                 if g.isSimulator { DeviceLines(g: g) }
-                ProcList(g: g, procs: only ?? g.procs)
+                ProcList(g: g, procs: only ?? g.procs, nav: nav)
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 3)

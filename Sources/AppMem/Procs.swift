@@ -65,15 +65,20 @@ enum Args {
     }
 }
 
+/// The lines of an expanded group: the top 10, or all. The keys walk the same lines.
+func procLines(_ procs: [Proc], all: Bool) -> [(proc: Proc, depth: Int)] { tree(all ? procs : Array(procs.prefix(10))) }
+
 struct ProcList: View {
     let g: Group  // for the right-click menu's rules
     let procs: [Proc]  // memory order: all of g's, or the search hits
-    @State private var all = false
+    @ObservedObject var nav: Nav  // "Show all" and the selected line (Keys.swift)
 
     var body: some View {
+        let all = nav.all.contains(g.id)
         // Lazy: "Show all" on the macOS group is hundreds of lines and argv reads.
         LazyVStack(alignment: .leading, spacing: 2) {
-            ForEach(tree(all ? procs : Array(procs.prefix(10))), id: \.proc.pid) { r in
+            ForEach(procLines(procs, all: all), id: \.proc.pid) { r in
+                let id = RowID(group: g.id, pid: r.proc.pid)
                 HStack(spacing: 6) {  // 6 as in the group row: the CPU column lines up
                     Text(r.proc.name).lineLimit(1).truncationMode(.middle)
                     // Not wrapped, the name truncates instead. The group badge needs all of them paused.
@@ -86,14 +91,18 @@ struct ProcList: View {
                     Text(fmt(r.proc.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                 }
                 .padding(.leading, CGFloat(min(r.depth, 4)) * 10)  // capped: deep chains keep room for the name
-                .contentShape(Rectangle())  // tooltip and right-click in the gaps too
+                .highlight(nav.sel == id, lead: 38)
+                .contentShape(Rectangle())  // tooltip, click and right-click in the gaps too
+                .onTapGesture { nav.click(id) }
                 // It hides the chip's own tooltip (an outer .help wins), so the ports are in it.
                 .help(Args.of(r.proc) + (r.proc.ports.isEmpty ? "" : "\n" + portsHelp(r.proc.ports)))
                 .contextMenu { ProcMenu(p: r.proc, g: g) }
                 .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(nav.sel == id ? .isSelected : [])
+                .id(id)
             }
             if procs.count > 10 {
-                Button(all ? "Show fewer" : "Show all \(procs.count)") { all.toggle() }
+                Button(all ? "Show fewer" : "Show all \(procs.count)") { nav.all.formSymmetricDifference([g.id]) }
                     .buttonStyle(.link).foregroundStyle(.tint)  // not .secondary like the lines
             }
         }
