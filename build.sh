@@ -11,6 +11,7 @@
 #   build/AppMem.app/Contents/MacOS/AppMem --json [--cpu]          groups, RAM, swap, pressure as JSON
 #   build/AppMem.app/Contents/MacOS/AppMem --leftovers             one per line; exit 1 if any
 #   build/AppMem.app/Contents/MacOS/AppMem --stop [NAME ...] [--dry-run]   stop leftovers
+#   open appmem://report                             copy a Markdown report (also appmem://open, appmem://refresh)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -41,6 +42,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>com.officecommun.appmem</string>
+    <key>CFBundleURLSchemes</key><array><string>appmem</string></array>
+  </dict></array>
 </dict>
 </plist>
 PLIST

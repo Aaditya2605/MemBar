@@ -55,6 +55,7 @@ struct SettingsMenu: View {
             Picker("Refresh Every", selection: $refreshEvery) {
                 ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
             }
+            MenuBarShowsPicker()  // MenuBar.swift
             Divider()
             Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
             Toggle("Show macOS Group", isOn: $showMacOS)
@@ -68,6 +69,7 @@ struct SettingsMenu: View {
                 }
             }
             Divider()
+            Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
             Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
             Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
