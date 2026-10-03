@@ -36,7 +36,8 @@ func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool
 /// Each orphan moves to a group named after its top orphan (the one launchd adopted), as
 /// when its app is gone: the responsibility call and Recall keep it in the group of an app
 /// that is still open (the agent's app, the terminal app). Not out of a leftover or an
-/// ignored app's group, where its app is known and quit, and not under an ignored name.
+/// ignored app's group, where its app is known and quit, not out of the simulator's or the
+/// emulator's (their own groups, also when an agent started them), and not under an ignored name.
 /// Then the orphan badge and its Stop: a group named after its own executable, not
 /// ignored, whose processes of `uid` are all orphans. `asLeftover` (Settings): it is a
 /// leftover too, for the dot, the waste total and Stop All.
@@ -50,7 +51,7 @@ func orphaning(_ groups: [Group], _ orphans: Set<pid_t>, procs: [pid_t: Proc], i
         return appOf(t.path).name
     }
     var gs = groups
-    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator {
+    for i in gs.indices where !gs[i].leftover && !gs[i].ignored && !gs[i].isSimulator && !gs[i].isEmulator {
         let away = gs[i].procs.filter { orphans.contains($0.pid) }.map { ($0, name($0)) }
             .filter { !ignored.contains($0.1) && "\($0.1)|false" != gs[i].id }
         gs[i].procs.removeAll { p in away.contains { $0.0.pid == p.pid } }

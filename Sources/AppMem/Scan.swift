@@ -618,6 +618,24 @@ func selfTest() {
         precondition(logged([es[0]], [es[1], es[2]]).map(\.name) == ["G2", "G3", "G1"])
         precondition(logLine(Freed.Entry(at: t0, name: "Cursor", mem: 800 << 20, how: "Auto-stop")).hasSuffix("  Auto-stop: Cursor, 800 MB"))
     }
+
+    do {  // orphans with auto-stop, alerts, the report, and the emulator's own group
+        let t0 = Date(timeIntervalSince1970: 1_000_000), node = "/opt/homebrew/bin/node"
+        var o = Group(name: "node", isApp: false, procs: [Proc(pid: 80, ppid: 1, uid: 501, path: node, mem: 900 << 20)], leftover: true)
+        o.orphan = true  // Settings > Count Orphans as Leftovers
+        precondition(autoStops([o], since: [o.id: t0], after: 600, simulator: true, now: t0 + 3600, uid: 501).isEmpty)  // by hand only
+        let on = AlertSettings(leftovers: true)
+        let st = alertsToSend(prev: AlertState(), groups: [o], sys: SysMem(), growth: [:], now: t0, settings: on, uid: 501).0
+        let a = alertsToSend(prev: st, groups: [o], sys: SysMem(), growth: [:], now: t0 + 30, settings: on, uid: 501).1
+        precondition(a.count == 1 && a[0].stop && a[0].body == orphanHelp + ". Its processes use 900 MB.")
+        precondition(report(groups: [o], sys: SysMem(), date: t0).hasSuffix("\n| node | 900 MB | – | 1 | orphan |"))
+        // An agent's detached node (10) started the emulator (11), Android Studio is open: it stays in its group.
+        let n = Proc(pid: 10, ppid: 1, uid: 501, path: node, mem: 1 << 20)
+        let e = Proc(pid: 11, ppid: 10, uid: 501, path: "/Users/a/Library/Android/sdk/emulator/emulator", mem: 1 << 20)
+        let og = orphaning([Group(name: "Android Emulator", isApp: true, procs: [e]), Group(name: "node", isApp: false, procs: [n])],
+                           [10, 11], procs: [10: n, 11: e], ignored: [], asLeftover: false, uid: 501)
+        precondition(og.map { $0.procs.map(\.pid) } == [[11], [10]] && og.map(\.orphan) == [false, true])
+    }
     recallTest()
     alertsTest()
     orphanTest()

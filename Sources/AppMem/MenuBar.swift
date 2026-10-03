@@ -54,7 +54,7 @@ func report(groups: [Group], sys: SysMem, date: Date, physical: Int64 = Int64(Pr
                      + left.map { "\($0.name) \(fmt($0.mem))" }.joined(separator: ", ") + ")"),
                  "", "| App | Memory | CPU | Processes | Flags |", "|:--|--:|--:|--:|:--|"]
     for g in top.prefix(15) {
-        let f = [g.leftover ? "leftover" : nil, g.respawns == nil ? nil : "respawns"].compactMap { $0 } + flags(g) + (isPaused(g) ? ["paused"] : [])
+        let f = [g.orphan ? "orphan" : g.leftover ? "leftover" : nil, g.respawns == nil ? nil : "respawns"].compactMap { $0 } + flags(g) + (isPaused(g) ? ["paused"] : [])
         let name = g.name.replacingOccurrences(of: "|", with: "\\|")  // a bare | ends the cell
         lines.append("| \(name) | \(fmt(g.mem)) | \(cpu(g.cpu)) | \(g.procs.count) | \(f.joined(separator: ", ")) |")
     }

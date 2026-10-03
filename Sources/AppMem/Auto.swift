@@ -36,12 +36,14 @@ func leftoverClock(_ groups: [Group], since: [String: Date], now: Date) -> [Stri
 /// The leftovers to auto-stop now. Not one that respawns: macOS starts it again, so it
 /// would be stopped again and again (Stop by hand still can). `simulator`: also the iOS
 /// Simulator and the Android emulator, as both can be in use with no Simulator or Android
-/// Studio window (an agent's device, an emulator run from VS Code).
+/// Studio window (an agent's device, an emulator run from VS Code). Never an orphan, also
+/// when Settings counts it as a leftover: no app tells it is waste, and a server kept on
+/// purpose looks the same. Stop by hand still can.
 func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, simulator: Bool, now: Date,
                uid: uid_t = getuid()) -> [Group] {
     guard let after else { return [] }
     return groups.filter { g in
-        g.leftover && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
+        g.leftover && !g.orphan && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
             && since[g.id].map { now.timeIntervalSince($0) >= after } == true
     }
 }

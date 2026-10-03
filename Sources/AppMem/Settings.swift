@@ -62,6 +62,7 @@ struct SettingsMenu: View {
             Divider()
             Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
             Toggle("Show macOS Group", isOn: $showMacOS)
+            Divider()  // what counts as a leftover, and what happens to them
             Toggle("Count Orphans as Leftovers", isOn: $countOrphans)
             Menu("Ignored Apps") {
                 if ignored.isEmpty { Text("None") }
