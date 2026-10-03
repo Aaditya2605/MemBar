@@ -23,6 +23,9 @@ func portMatch(_ ports: [UInt16], _ q: String) -> Bool {
     return ports.contains(n)
 }
 
+/// The tooltip: "Listens on TCP ports :3000 :9229".
+func portsHelp(_ ports: [UInt16]) -> String { "Listens on TCP port\(ports.count > 1 ? "s" : "") \(portsText(ports))" }
+
 /// For the row's accessibility label: ", listens on ports 3000, 9229", or "".
 func portsLabel(_ ports: [UInt16]) -> String {
     ports.isEmpty ? "" : ", listens on port\(ports.count > 1 ? "s" : "") " + ports.map(String.init).joined(separator: ", ")
@@ -72,7 +75,7 @@ func addPorts(_ procs: inout [pid_t: Proc], _ ports: [pid_t: [UInt16]]) {
 
 // MARK: - UI
 
-/// Small tag ":3000 :9229 +1"; `network` adds the icon (a group row). Two ports at
+/// Small tag ":3000 :9229 +1"; `network` adds the icon (a group row, a paused process). Two ports at
 /// most, so the name keeps its room; the tooltip has all of them. `limit` 0 = the
 /// icon only, next to a paused badge. One port next to the growing arrow, else a
 /// short name like "macOS" truncates.
@@ -91,7 +94,7 @@ struct PortChip: View {
         .padding(.horizontal, 4).padding(.vertical, 1)
         .background(Color(nsColor: .quaternaryLabelColor), in: RoundedRectangle(cornerRadius: 4))
         .fixedSize()
-        .help("Listens on TCP port\(ports.count > 1 ? "s" : "") \(portsText(ports))")
+        .help(portsHelp(ports))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(portsLabel(ports).dropFirst(2)))
     }

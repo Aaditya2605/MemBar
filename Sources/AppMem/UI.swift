@@ -197,7 +197,7 @@ struct Row: View {
     @State private var expanded = false
 
     var body: some View {
-        let growing = growthText(points), paused = isPaused(g)
+        let growing = growthText(points), paused = isPaused(g), others = othersHelp(g)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Button { expanded.toggle() } label: {
@@ -227,7 +227,8 @@ struct Row: View {
                         // leftover: with the badge and Stop, even the icon cuts the name that Stop is for.
                         if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
                         Spacer(minLength: 4)
-                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
+                        // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
+                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
                         Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
@@ -236,12 +237,13 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help].compactMap { $0 }.joined(separator: ". "))
-                .help(othersHelp(g))
+                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, others.isEmpty ? nil : others]
+                    .compactMap { $0 }.joined(separator: ". "))
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
                         .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
+                        .help(others)
                 }
             }
             .contextMenu { GroupMenu(g: g) }

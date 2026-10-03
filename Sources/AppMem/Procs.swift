@@ -34,25 +34,28 @@ func argv(_ buf: [UInt8]) -> [String] {
 }
 
 /// Tooltip text: the full path (argv[0] is often only a name), then the arguments.
+/// A process that sets its title (node's process.title: Next.js, npm) writes it over
+/// argv[0] and blanks the other arguments: then the title, as ps shows it.
 func commandLine(_ path: String, _ argv: [String]) -> String {
-    let s = ([path] + argv.dropFirst()).joined(separator: " ")
+    let title = argv.count > 1 && !argv[0].isEmpty && argv.dropFirst().allSatisfy(\.isEmpty)
+    let s = title ? argv[0] : ([path] + argv.dropFirst()).joined(separator: " ")
     return s.count > 300 ? s.prefix(299) + "…" : s
 }
 
-/// Group row tooltip: the processes that Stop must leave alone.
+/// Tooltip of a group's process count and Stop: the processes that Stop must leave alone.
 func othersHelp(_ g: Group, uid: uid_t = getuid()) -> String {
     let n = g.procs.filter { $0.uid != uid }.count
     if n == 0 { return "" }
     return "\(n == g.procs.count ? "All" : "\(n) of \(g.procs.count)") processes run as another user (such as root). AppMem cannot stop them."
 }
 
-/// Command lines, read only when a row is expanded, then cached: the same PID
-/// with the same path runs the same command. Main thread only.
+/// Command lines, read only when a row is expanded, then cached by PID, start time and
+/// path: PIDs wrap at 99999, so days later a new `node` can get an old node's PID. Main thread only.
 enum Args {
     private static var cache: [String: String] = [:]
 
     static func of(_ p: Proc) -> String {
-        let key = "\(p.pid) \(p.path)"
+        let key = "\(p.pid) \(started(p.pid)?.timeIntervalSince1970 ?? 0) \(p.path)"  // path: exec keeps PID and start
         if let s = cache[key] { return s }
         // ponytail: dropped whole past 2000 entries (PIDs that came and went); LRU if refills ever cost.
         if cache.count > 2000 { cache.removeAll() }
@@ -71,18 +74,21 @@ struct ProcList: View {
         // Lazy: "Show all" on the macOS group is hundreds of lines and argv reads.
         LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(tree(all ? procs : Array(procs.prefix(10))), id: \.proc.pid) { r in
-                HStack {
+                HStack(spacing: 6) {  // 6 as in the group row: the CPU column lines up
                     Text(r.proc.name).lineLimit(1).truncationMode(.middle)
-                    if r.proc.stopped { Text("paused").font(.caption2.bold()) }  // the group badge needs all of them paused
-                    if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports) }
+                    // Not wrapped, the name truncates instead. The group badge needs all of them paused.
+                    if r.proc.stopped { Text("paused").font(.caption2.bold()).fixedSize() }
+                    // Next to "paused" only the icon, as in the group row: indented, the name has no room left.
+                    if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports, network: r.proc.stopped, limit: r.proc.stopped ? 0 : 2) }
                     Spacer()
-                    Text(String(r.proc.pid)).monospacedDigit()
+                    Text(String(r.proc.pid)).monospacedDigit().fixedSize()
                     Text(cpu(r.proc.cpu)).monospacedDigit().frame(width: 40, alignment: .trailing)
                     Text(fmt(r.proc.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                 }
                 .padding(.leading, CGFloat(min(r.depth, 4)) * 10)  // capped: deep chains keep room for the name
                 .contentShape(Rectangle())  // tooltip and right-click in the gaps too
-                .help(Args.of(r.proc))
+                // It hides the chip's own tooltip (an outer .help wins), so the ports are in it.
+                .help(Args.of(r.proc) + (r.proc.ports.isEmpty ? "" : "\n" + portsHelp(r.proc.ports)))
                 .contextMenu { ProcMenu(p: r.proc, g: g) }
                 .accessibilityElement(children: .combine)
             }

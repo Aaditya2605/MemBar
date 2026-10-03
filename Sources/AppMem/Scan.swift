@@ -378,6 +378,7 @@ func selfTest() {
     precondition(ports(fromLPorts: [Int32(UInt16(3000).bigEndian), Int32(UInt16(9229).bigEndian), Int32(UInt16(3000).bigEndian)]) == [3000, 9229])
     precondition(portsText([3000, 9229]) == ":3000 :9229" && portsText([1, 2, 3, 4], limit: 2) == ":1 :2 +2" && portsText([]) == "")
     precondition(portMatch([3000, 9229], "3000") && portMatch([3000], ":3000") && !portMatch([3000], "300") && !portMatch([3000], ":"))
+    precondition(portsHelp([80]) == "Listens on TCP port :80" && portsHelp([3000, 9229]) == "Listens on TCP ports :3000 :9229")
     precondition(portsLabel([]) == "" && portsLabel([80]) == ", listens on port 80" && portsLabel([80, 443]) == ", listens on ports 80, 443")
     var pp = procs
     addPorts(&pp, [11: [3000], 20: [9229, 3000], 777: [1]])  // 777: gone since the read
@@ -444,6 +445,8 @@ func selfTest() {
     precondition(argv(args) == ["node", "", "--port=1"] && argv([1, 0]) == [] && argv(procArgs(getpid()) ?? []).contains("--test"))
     precondition(commandLine("/bin/node", ["node", "a.js"]) == "/bin/node a.js" && commandLine("/x", []) == "/x")
     precondition(commandLine("/x", ["x", String(repeating: "a", count: 500)]).count == 300)
+    // node's process.title over argv: the title, not the path and blanks
+    precondition(commandLine("/bin/node", ["next-server (v15.0.0)", "", "", ""]) == "next-server (v15.0.0)")
     let mixed = Group(name: "X", isApp: true, procs: [procs[10]!, Proc(pid: 2, ppid: 1, uid: 0, path: "/usr/sbin/d", mem: 1)])
     precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
                  && othersHelp(byName["Cursor"]!, uid: 501) == "")
