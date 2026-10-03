@@ -50,7 +50,7 @@ extension Panel {
 
     /// The lines on screen, in order: what Up and Down walk.
     var rowIDs: [RowID] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = q
         return shown.flatMap { g in
             let only = hits(g, q), open = only != nil || nav.expanded.contains(g.id)
             let procs = open ? procLines(only ?? g.procs, all: nav.all.contains(g.id)) : []

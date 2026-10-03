@@ -76,18 +76,7 @@ func launchdLabel(_ list: String, pids: Set<pid_t>) -> String? {
 }
 
 /// `launchctl list`: the launchd jobs of this user.
-func launchctlList() -> String {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    p.arguments = ["list"]
-    let pipe = Pipe()
-    p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return "" }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
-    return String(decoding: data, as: UTF8.self)
-}
+func launchctlList() -> String { String(decoding: output("/bin/launchctl", ["list"]), as: UTF8.self) }
 
 /// The Model's memory across scans (scan queue only).
 struct Recall {

@@ -57,14 +57,6 @@ func detailsSummary(_ procs: [Proc], total: Int) -> String {
     return "\(n) process\(total == 1 ? "" : "es"), \(fmt(procs.reduce(0) { $0 + $1.mem })), CPU \(cpu(procs.reduce(0) { $0 + $1.cpu }))"
 }
 
-/// A multi-selection: an item applies when it applies to one of the processes.
-func allowed(_ ps: [Proc], in g: Group, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
-    ps.reduce(Allowed()) { a, p in
-        let b = allowed(p, in: g, uid: uid, me: me)
-        return Allowed(quit: a.quit || b.quit, pause: a.pause || b.pause, resume: a.resume || b.resume)
-    }
-}
-
 /// The second click of a double-click, read in a Button's action. Mouse-ups only:
 /// clickCount raises on a key event (Space on a focused button).
 func isDoubleClick() -> Bool { NSApp.currentEvent.map { $0.type == .leftMouseUp && $0.clickCount == 2 } ?? false }

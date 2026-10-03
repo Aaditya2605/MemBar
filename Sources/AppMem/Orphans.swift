@@ -85,12 +85,9 @@ func orphaning(_ groups: [Group], _ orphans: Set<pid_t>, procs: [pid_t: Proc], i
 func detached(_ pid: pid_t, before t: Date) -> Bool { started(pid).map { $0 < t } == true && !hasTerminal(pid) }
 
 /// A controlling terminal whose device is still there: an open tab, or a session keeper's
-/// pty. None, or its device is gone (the tab closed): false. sysctl, as started().
+/// pty. None, or its device is gone (the tab closed): false.
 func hasTerminal(_ pid: pid_t) -> Bool {
-    var info = kinfo_proc(), size = MemoryLayout<kinfo_proc>.stride
-    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }  // size 0: gone
-    let tty = info.kp_eproc.e_tdev
+    guard let tty = kinfo(pid)?.kp_eproc.e_tdev else { return false }
     return tty != -1 && devname(tty, S_IFCHR) != nil  // -1: NODEV, no terminal
 }
 

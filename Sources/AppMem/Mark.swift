@@ -40,10 +40,9 @@ func delta(mark: Mark, groups: [Group]) -> Mark.Delta {
     return d
 }
 
-/// "+320 MB", "−1.1 GB" (a true minus sign), "0 MB". One decimal in GB: a change is a rough number.
+/// "+320 MB", "−1.1 GB" (a true minus sign), "0 MB". short(): a change is a rough number.
 func fmtChange(_ bytes: Int64) -> String {
-    let mb = Double(bytes.magnitude) / 1048576
-    let s = mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb)
+    let s = short(abs(bytes))
     return (s == "0 MB" ? "" : bytes > 0 ? "+" : "−") + s
 }
 

@@ -28,12 +28,16 @@ func leftoverAge(_ g: Group, started: (pid_t) -> Date?, now: Date) -> TimeInterv
     return procs.compactMap { started($0.pid) }.min().map { now.timeIntervalSince($0) }
 }
 
-/// When `pid` started. sysctl, not proc_pidinfo: it works for other users' processes too.
-func started(_ pid: pid_t) -> Date? {
+/// One process's kernel record. sysctl, not proc_pidinfo: it works for other users' processes too.
+func kinfo(_ pid: pid_t) -> kinfo_proc? {
     var info = kinfo_proc(), size = MemoryLayout<kinfo_proc>.stride
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }  // size 0: gone
-    let t = info.kp_proc.p_un.__p_starttime
+    return sysctl(&mib, 4, &info, &size, nil, 0) == 0 && size > 0 ? info : nil  // size 0: gone
+}
+
+/// When `pid` started.
+func started(_ pid: pid_t) -> Date? {
+    guard let t = kinfo(pid)?.kp_proc.p_un.__p_starttime else { return nil }
     return Date(timeIntervalSince1970: Double(t.tv_sec) + Double(t.tv_usec) / 1e6)
 }
 

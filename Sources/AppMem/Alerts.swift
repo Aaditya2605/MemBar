@@ -50,7 +50,7 @@ func alertsToSend(prev: AlertState, groups: [Group], sys: SysMem, growth: [Strin
         guard g.mem >= 500 << 20, now.timeIntervalSince(since) >= 30 else { continue }
         next.told.insert(g.name)
         if s.leftovers {
-            out.append(Alert(kind: .leftover, group: g.name, stop: g.isSimulator || g.procs.contains { $0.uid == uid },
+            out.append(Alert(kind: .leftover, group: g.name, stop: stoppable(g, uid: uid),
                              title: "Leftover: \(g.name)", body: "\(flagHelp(g)). Its processes use \(fmt(g.mem))."))
         }
     }

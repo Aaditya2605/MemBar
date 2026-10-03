@@ -108,15 +108,7 @@ enum Sims {
     /// The booted devices, each with its launchd_sim: its argument is the device's
     /// .../Devices/<UDID>/data/var/run/launchd_bootstrap.plist.
     static func read(_ launchd: [Proc]) -> [SimDevice] {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        p.arguments = ["simctl", "list", "devices", "booted", "-j"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        let data = output("/usr/bin/xcrun", ["simctl", "list", "devices", "booted", "-j"])
         let ids = Dictionary(launchd.compactMap { l in udid(in: argv(procArgs(l.pid) ?? []).joined(separator: " ")).map { ($0, l.pid) } },
                              uniquingKeysWith: { a, _ in a })
         return bootedDevices(data).map { d in var d = d; d.launchd = ids[d.udid]; return d }

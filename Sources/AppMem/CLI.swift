@@ -135,7 +135,7 @@ func runCLI(_ args: [String]) -> Int32? {
                 fputs("skip \(g.name): this command runs in it\n", stderr); continue
             }
             let mine = g.procs.filter { $0.uid == getuid() }.map { String($0.pid) }  // stop() signals only these
-            if !g.isSimulator && mine.isEmpty {
+            if !stoppable(g) {
                 fputs("skip \(g.name): its processes belong to other users\n", stderr); continue
             }
             print(dryRun ? "would stop" : "stop", g.name, fmt(g.mem),

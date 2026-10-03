@@ -93,9 +93,9 @@ enum Freed {
 
     /// `how`: "Stop", "Stop All", "Auto-stop" or "Idle quit". The memory of the last scan:
     /// what the group held when it was stopped.
-    static func record(_ gs: [Group], how: String, at now: Date = Date()) {
+    static func record(_ gs: [Group], how: String) {
         guard !gs.isEmpty else { return }
-        let d = UserDefaults.standard
+        let d = UserDefaults.standard, now = Date()
         d.set(d.integer(forKey: "freedBytes") + gs.reduce(0) { $0 + Int($1.mem) }, forKey: "freedBytes")
         if d.double(forKey: "freedSince") == 0 { d.set(now.timeIntervalSince1970, forKey: "freedSince") }
         let new = gs.map { Entry(at: now, name: $0.name, mem: $0.mem, how: how) }
@@ -110,8 +110,8 @@ enum Auto {
     private static var tried: [String: Date] = [:]  // app name → its last-front time when asked to quit
 
     /// Each scan, from Model.refresh.
-    static func check(_ groups: [Group], _ model: Model, now: Date = Date()) {
-        let d = UserDefaults.standard, after = autoStopAfter(d.integer(forKey: "autoStop"))
+    static func check(_ groups: [Group], _ model: Model) {
+        let d = UserDefaults.standard, now = Date(), after = autoStopAfter(d.integer(forKey: "autoStop"))
         since = after == nil ? [:] : leftoverClock(groups, since: since, now: now)
         let stops = autoStops(groups, since: since, after: after, simulator: d.bool(forKey: "autoStopSimulator"), now: now)
         if !stops.isEmpty {

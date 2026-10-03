@@ -17,15 +17,18 @@ func maySignal(_ p: Proc, in g: Group, uid: uid_t = getuid(), me: pid_t = getpid
         && (g.isApp || !systemPrefixes.contains { p.path.hasPrefix($0) })
 }
 
+/// Which items apply to processes `ps` of `g`: an item applies when it applies to one of them.
+func allowed(_ ps: [Proc], in g: Group, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
+    let mine = ps.filter { maySignal($0, in: g, uid: uid, me: me) }
+    return Allowed(quit: !mine.isEmpty, pause: mine.contains { !$0.stopped }, resume: mine.contains(where: \.stopped))
+}
+
 /// `app`: an app runs at the group's .app, so Quit asks it to quit. Without one, Quit
 /// signals the processes.
 func allowed(_ g: Group, app: Bool, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
-    let mine = g.procs.filter { maySignal($0, in: g, uid: uid, me: me) }, app = app && g.name != "macOS"
-    return Allowed(quit: app || !mine.isEmpty, restart: app, pause: mine.contains { !$0.stopped }, resume: mine.contains(where: \.stopped))
-}
-
-func allowed(_ p: Proc, in g: Group, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
-    maySignal(p, in: g, uid: uid, me: me) ? Allowed(quit: true, pause: !p.stopped, resume: p.stopped) : Allowed()
+    var a = allowed(g.procs, in: g, uid: uid, me: me)
+    a.restart = app && g.name != "macOS"; a.quit = a.quit || a.restart
+    return a
 }
 
 /// The "paused" badge: all of this user's processes in `g` are stopped.
@@ -152,7 +155,7 @@ struct ProcMenu: View {
     let p: Proc, g: Group
 
     var body: some View {
-        let a = allowed(p, in: g)
+        let a = allowed([p], in: g)
         Button("Quit") { Actions.send(SIGTERM, [p], in: g) }.disabled(!a.quit)
         Button("Force Quit…") { if Actions.confirmForceQuit("\(p.name) (PID \(p.pid))") { Actions.send(SIGKILL, [p], in: g) } }
             .disabled(!a.quit)

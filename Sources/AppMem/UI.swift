@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 
 // Menu bar item + popover. The popover refreshes every 2-5 s while it is open
-// (Settings > Refresh Every); closed, a scan runs once a minute, only to update the icon.
+// (Settings > Refresh Every); closed, a light scan runs once a minute and on a pressure
+// change, for the icon, notifications, History and the auto rules.
 
 final class Model: ObservableObject {
     @Published var groups: [Group] = []
@@ -94,12 +95,16 @@ struct Panel: View {
     /// The Settings filters thin the plain list; a search looks at every group.
     var listed: (shown: [Group], small: [Group]) { visible(model.groups, hideSmall: hideSmall, showMacOS: showMacOS) }
 
+    /// The search text as matching uses it. One place: shown and rowIDs must agree.
+    var q: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
+    var markDelta: Mark.Delta? { model.mark.map { delta(mark: $0, groups: model.groups) } }
+
     /// Leftovers first, then by the sort column. A query keeps the groups whose name,
     /// or one of whose process names or PIDs, matches.
     var shown: [Group] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = q
         let gs = q.isEmpty ? listed.shown : model.groups.filter { $0.name.lowercased().contains(q) || !matching($0, q).isEmpty }
-        let d = model.mark.map { delta(mark: $0, groups: model.groups) }
+        let d = markDelta
         func key(_ g: Group) -> Double {
             switch sort { case .name: 0; case .procs: Double(g.procs.count); case .cpu: g.cpu; case .memory: Double(g.mem); case .change: Double(d?.key(g) ?? g.mem) }
         }
@@ -164,8 +169,7 @@ struct Panel: View {
             let s = shown, typed = query.trimmingCharacters(in: .whitespaces)  // shown sorts: once per render
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    let q = typed.lowercased()
-                    let d = model.mark.map { delta(mark: $0, groups: model.groups) }
+                    let q = q, d = markDelta
                     ForEach(s) { g in
                         Row(g: g, only: hits(g, q), points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }, nav: nav) {
                             model.stopGroups([g])
@@ -179,7 +183,7 @@ struct Panel: View {
             .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
             .scrolls(to: nav.sel)
             .overlay { if s.isEmpty && !typed.isEmpty { ContentUnavailableView.search(text: typed) } }  // else no match looks like loading
-            let small = query.trimmingCharacters(in: .whitespaces).isEmpty ? listed.small : []
+            let small = q.isEmpty ? listed.small : []
             if !small.isEmpty {
                 Divider()
                 Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")

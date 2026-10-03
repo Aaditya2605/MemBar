@@ -18,7 +18,7 @@ struct Proc {
 
 struct Group: Identifiable {
     let name: String
-    let isApp: Bool  // a non-Apple app: only these can be leftovers
+    let isApp: Bool  // a non-Apple app, not a bare executable; isLeftover() also flags the simulator, orphaning() orphans
     var procs: [Proc] = []
     var leftover = false
     var bundle: String?  // the app's .app folder, for its icon
@@ -202,18 +202,20 @@ private func comm(_ s: proc_bsdshortinfo) -> String {
     withUnsafeBytes(of: s.pbsi_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
 }
 
+/// A tool's stdout; empty if it cannot run. Read before wait: a full pipe would block the tool.
+func output(_ exe: String, _ args: [String]) -> Data {
+    let p = Process(), pipe = Pipe()
+    p.executableURL = URL(fileURLWithPath: exe); p.arguments = args
+    p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
+    guard (try? p.run()) != nil else { return Data() }
+    defer { p.waitUntilExit() }
+    return pipe.fileHandleForReading.readDataToEndOfFile()
+}
+
 /// Footprint via top, for processes that proc_pid_rusage refuses (root and other
 /// users). top costs about 0.35 s of CPU, so callers cache it.
 func topMem() -> [pid_t: Int64] {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/usr/bin/top")
-    p.arguments = ["-l", "1", "-stats", "pid,mem"]
-    let pipe = Pipe()
-    p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return [:] }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
+    let data = output("/usr/bin/top", ["-l", "1", "-stats", "pid,mem"])
     var out: [pid_t: Int64] = [:], started = false
     for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
         let f = line.split(separator: " ")
@@ -460,8 +462,8 @@ func selfTest() {
         precondition(!isPaused(paused, uid: 501) && allowed(paused, app: false, uid: 501, me: 99) == Allowed(quit: true, pause: true, resume: true))
         paused.procs[1].stopped = true
         precondition(isPaused(paused, uid: 501) && !isPaused(paused, uid: 502) && allowed(paused, app: false, uid: 501, me: 99) == Allowed(quit: true, resume: true))
-        precondition(allowed(paused.procs[0], in: paused, uid: 501, me: 99) == Allowed(quit: true, resume: true))
-        precondition(allowed(procs[11]!, in: cursor, uid: 501, me: 99) == Allowed(quit: true, pause: true))
+        precondition(allowed([paused.procs[0]], in: paused, uid: 501, me: 99) == Allowed(quit: true, resume: true))
+        precondition(allowed([procs[11]!], in: cursor, uid: 501, me: 99) == Allowed(quit: true, pause: true))
         precondition(summaryText(cursor) == "Cursor: 800 MB, CPU –, 2 processes\n  500 MB  CPU –  PID 10  node\n  300 MB  CPU –  PID 11  node")
         precondition(summaryText(pg["Cursor"]!).hasSuffix("PID 10  node\n  300 MB  CPU –  PID 11  node  :3000"))
     }
@@ -729,7 +731,7 @@ func selfTest() {
         let label = later.map { changeLabel($0, d) }
         precondition(label[0]! == ("+320 MB", .red, "+320 MB since the mark: 1000 MB then") && label[1]!.text == "−1.1 GB" && label[1]!.color == .green)
         precondition(label[2] == nil && label[6]!.text == "−50 MB" && label[3]!.text == "new" && label[4]!.text == "new" && label[5] == nil)  // 49 MB: noise
-        precondition(fmtChange(0) == "0 MB" && fmtChange(-(1 << 19) + 1) == "0 MB" && fmtChange(1536 * mb) == "+1.5 GB" && fmtChange(-50 * mb) == "−50 MB")
+        precondition(fmtChange(0) == "0 MB" && fmtChange(-(1 << 19) + 1) == "0 MB" && fmtChange(1536 * mb) == "+1.5 GB" && fmtChange(-50 * mb) == "−50 MB" && fmtChange(1023 * mb + mb * 6 / 10) == "+1.0 GB")
         precondition(markSummary(m, ram: 9229 * mb, d, now: now) == "Since mark (12 min): RAM +1.2 GB · 2 new · 1 gone")
         precondition(markSummary(m, ram: 7900 * mb, Mark.Delta(), now: now + 3 * h) == "Since mark (3 h): RAM −100 MB")
         precondition(markHelp(m, d).hasSuffix(", RAM 7.81 GB\nGone since the mark: E 500 MB") && !markHelp(m, Mark.Delta()).contains("Gone"))
