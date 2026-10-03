@@ -345,11 +345,22 @@ func selfTest() {
     precondition(!byName["WhatsApp"]!.leftover && byName["WhatsApp"]!.procs.map(\.pid) == [50, 51])
     precondition(groups.map(\.name) == ["Cursor", "iOS Simulator", "Claude", "WhatsApp", "Weather", "macOS"])
     // CLI.swift: a stray or misspelt flag must never turn into a stop.
-    precondition(parseArgs([]) == nil && parseArgs(["--snapshot", "x.png"]) == nil && parseArgs(["-h"]) == .help)
+    precondition(parseArgs([]) == nil && parseArgs(["-h"]) == .help)
     precondition(parseArgs(["--json", "--cpu"]) == .json(cpu: true) && parseArgs(["--stop", "--json"]) == .json(cpu: false))
-    precondition(parseArgs(["Cursor", "--dry-run", "--stop", "iOS Simulator"]) == .stop(names: ["Cursor", "iOS Simulator"], dryRun: true))
-    precondition(parseArgs(["--stop", "--dryrun"]) == .bad("unknown flag for --stop: --dryrun"))
+    precondition(parseArgs(["Cursor", "--dry-run", "--stop", "iOS Simulator"], uid: 501) == .stop(names: ["Cursor", "iOS Simulator"], dryRun: true))
+    precondition(parseArgs(["--stop", "--dryrun"]) == .bad("unknown flag: --dryrun") && parseArgs(["--stop", "--cpu"], uid: 501) == .bad("unknown flag for --stop: --cpu"))
     precondition(parseArgs(["--dry-run"]) == .bad("--dry-run works only with --stop"))
+    // A typo must not start the menu bar app (it never exits); Cocoa's own args must.
+    precondition(parseArgs(["--leftover"]) == .bad("unknown flag: --leftover") && parseArgs(["--json", "--cpuu"]) == .bad("unknown flag: --cpuu"))
+    precondition(parseArgs(["-NSDocumentRevisionsDebugMode", "YES", "-psn_0_1"]) == nil)
+    #if DEBUG
+    precondition(parseArgs(["--snapshot", "x.png"]) == nil && parseArgs(["--snapshot"]) == .bad("--snapshot needs OUT.png"))
+    #else
+    precondition(parseArgs(["--snapshot", "x.png"]) == .bad("--snapshot works only in debug builds"))
+    #endif
+    // As root (sudo) every root daemon would count as this user's: no --stop, even dry.
+    precondition(parseArgs(["--stop", "--dry-run"], uid: 0) == .bad("--stop does not run as root: run it without sudo"))
+    precondition(parseArgs(["--json"], uid: 0) == .json(cpu: false))
     precondition(stopTargets(groups, []).targets.map(\.name) == ["Cursor", "iOS Simulator"])
     let named = stopTargets(groups, ["cursor", "Claude", "nope"])  // Claude is open: not a leftover
     precondition(named.targets.map(\.name) == ["Cursor"] && named.missing == ["Claude", "nope"])

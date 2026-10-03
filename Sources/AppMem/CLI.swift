@@ -14,7 +14,7 @@ private let usage = """
       --stop [NAME ...] [--dry-run]
                                   stop all leftover groups, or only the named ones
                                   (any case), as the Stop button does; --dry-run:
-                                  print what it would stop, stop nothing
+                                  print what it would stop, stop nothing; not as root
       --test                      self-check of the pure rules
       --snapshot OUT.png [QUERY]  debug builds: the panel as a PNG
       --help, -h                  this text
@@ -23,11 +23,22 @@ private let usage = """
 
 enum CLICommand: Equatable { case help, json(cpu: Bool), leftovers, stop(names: [String], dryRun: Bool), bad(String) }
 
-/// The command in `args` (argv without the program); nil when none of these flags
-/// is there, so the menu bar app starts. --stop is checked last and takes no other
-/// flag than --dry-run: a stray or misspelt flag ("--dryrun") never becomes a stop.
-func parseArgs(_ args: [String]) -> CLICommand? {
+/// Every flag, also the ones main.swift reads (--list, --test, --snapshot).
+private let flags: Set = ["--help", "--json", "--cpu", "--leftovers", "--stop", "--dry-run", "--list", "--test", "--snapshot"]
+
+/// The command in `args` (argv without the program); nil when there is none, so
+/// main.swift runs --snapshot or starts the menu bar app. Any other "--" flag is an
+/// error: the app's run loop never returns, so a hook with a typo would hang. Cocoa's
+/// own args (-NSFoo YES, -psn_) start with one dash and pass. --stop is checked last
+/// and takes no other flag than --dry-run: a stray flag never becomes a stop.
+func parseArgs(_ args: [String], uid: uid_t = getuid()) -> CLICommand? {
     let has = Set(args)
+    if let f = args.first(where: { $0.hasPrefix("--") && !flags.contains($0) }) { return .bad("unknown flag: \(f)") }
+    #if DEBUG
+    if args.last == "--snapshot" { return .bad("--snapshot needs OUT.png") }
+    #else
+    if has.contains("--snapshot") { return .bad("--snapshot works only in debug builds") }
+    #endif
     if has.contains("--help") || has.contains("-h") { return .help }
     if has.contains("--json") { return .json(cpu: has.contains("--cpu")) }
     if has.contains("--leftovers") { return .leftovers }
@@ -35,6 +46,8 @@ func parseArgs(_ args: [String]) -> CLICommand? {
         if let f = args.first(where: { $0.hasPrefix("-") && $0 != "--stop" && $0 != "--dry-run" }) {
             return .bad("unknown flag for --stop: \(f)")
         }
+        // getuid() is 0 under sudo, so root's daemons would pass stop()'s "this user only" rule.
+        if uid == 0 { return .bad("--stop does not run as root: run it without sudo") }
         return .stop(names: args.filter { !$0.hasPrefix("-") }, dryRun: has.contains("--dry-run"))
     }
     if has.contains("--cpu") { return .bad("--cpu works only with --json") }
