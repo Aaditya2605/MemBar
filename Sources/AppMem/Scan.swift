@@ -25,6 +25,7 @@ struct Group: Identifiable {
     var bundle: String?  // the app's .app folder, for its icon
     var ignored = false  // a leftover that ignoring() unflagged: its app is still not open
     var respawns: String?  // it came back after Stop: why (see Recall)
+    var job: String?  // the label of the launchd job of this user that started it again (see Recall, Agents)
     var orphan = false  // its processes were left by a terminal or agent that is gone (see Orphans)
     var recalled = false  // holds a command-line process that only Recall's memory puts in this app's group
     var id: String { "\(name)|\(isApp)" }
@@ -861,6 +862,7 @@ func selfTest() {
         precondition(ramLabel(Array(p.suffix(1)), note: note) == "RAM: Cached and free 5.00 GB. " + note)  // VoiceOver cannot reach the .help
     }
     recallTest()
+    do { agentsTest() }  // Agents.swift: a respawn's launch agent
     alertsTest()
     orphanTest()
 

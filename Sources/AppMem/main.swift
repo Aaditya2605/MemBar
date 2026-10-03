@@ -2,6 +2,12 @@ import AppKit
 
 if CommandLine.arguments.contains("--test") { selfTest(); exit(0) }
 if CommandLine.arguments.contains("--list") { printGroups(); exit(0) }
+#if DEBUG
+// Before runCLI: its flag list does not know this test hook (Agents.swift).
+if let i = CommandLine.arguments.firstIndex(of: "--agent-test"), i + 2 < CommandLine.arguments.count {
+    exit(agentTest(home: CommandLine.arguments[i + 1], label: CommandLine.arguments[i + 2]))
+}
+#endif
 if let status = runCLI(Array(CommandLine.arguments.dropFirst())) { exit(status) }  // CLI.swift
 #if DEBUG
 if ProcessInfo.processInfo.environment["MENUBAR"] != nil, let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {

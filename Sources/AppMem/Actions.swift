@@ -137,6 +137,7 @@ struct GroupMenu: View {
         if a.pause || !a.resume {
             Button("Pause") { Actions.send(SIGSTOP, g.procs.filter { !$0.stopped }, in: g) }.disabled(!a.pause)
         }
+        if let job = g.agentLabel { Divider(); AgentItems(label: job) }  // Agents.swift: what starts it again after Stop
         Divider()
         Button("Reveal in Finder") { file.map(Actions.reveal) }.disabled(file == nil)
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
