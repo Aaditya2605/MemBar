@@ -204,7 +204,7 @@ struct Panel: View {
             .focusable().focusEffectDisabled().focused($focus, equals: .list)
             .onKeyPress(action: listKey)
             .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
-            .scrolls(to: nav.sel)
+            .scrolls(to: nav)
             .overlay { if s.isEmpty && !typed.isEmpty { NoResults(typed: typed, q: q, marked: model.mark != nil) } }  // else no match looks like loading
             let small = q.isEmpty ? listed.small : []
             if !small.isEmpty {

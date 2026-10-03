@@ -19,8 +19,9 @@ struct Insight: Equatable {
 ///    the "idle" filter.
 /// 3. Swap of 25% of the RAM or more, at Warning or Critical pressure: the largest group that has a
 ///    process of this user and is not macOS (kernel_task and root daemons cannot be quit).
-/// 4. A growing group (History's rule), not an ignored one and not macOS (nothing to quit, and Settings
-///    can hide its row): the one that rose the most. By group: a hidden one does not hide another app's growth.
+/// 4. A growing group (History's rule), not an ignored one, not macOS (nothing to quit, and Settings can
+///    hide its row) and with a process of this user (as 3): the one that rose the most. By group: a hidden
+///    one does not hide another app's growth.
 /// 5. Booted simulators (launchd_sim runs) and emulators that are not leftovers, as their app is
 ///    open, of 1 GB or more together: the largest one, open, so its devices show with Shut Down.
 /// nil: nothing is worth a line.
@@ -53,7 +54,7 @@ func insight(groups: [Group], sys: SysMem, history: History, now: Date, hidden: 
                        help: "Memory pressure is \(sys.pressure.label) and swap is \(sys.swap * 100 / max(physical, 1))% of the RAM: macOS writes memory to disk, and apps slow down. Quitting the largest app frees the most.",
                        button: "Show", action: .select(big.id))
     }
-    let grow = groups.filter { !$0.ignored && $0.name != "macOS" && shows("growing|\($0.id)") }
+    let grow = groups.filter { g in !g.ignored && g.name != "macOS" && g.procs.contains { $0.uid == uid } && shows("growing|\(g.id)") }
         .compactMap { g in isGrowing(history.points(g.id)).map { (g, $0) } }.max { $0.1 < $1.1 }?.0
     if let g = grow, let t = growthText(history.points(g.id)) {
         return Insight(id: "growing|\(g.id)", symbol: "arrow.up.right", text: "\(g.name) keeps growing: \(t)", short: "\(g.name): \(t)",
@@ -127,11 +128,12 @@ extension Panel {
     func act(_ i: Insight) {
         switch i.action {
         case .stopAll: model.stopAll()
-        case .search(let token): query = token; focus = .list
+        case .search(let token): query = token + " "; focus = .list  // as the filter menu: a key typed next is text, not more of the word
         case .select(let id):
             query = ""
             nav.expanded.insert(id)  // its sparkline, process list or device lines tell the rest
-            nav.click(RowID(group: id))  // selects it, the list scrolls to it (scrolls(to:))
+            nav.click(RowID(group: id))  // selects it
+            nav.shows += 1  // the list scrolls to it (scrolls(to:)), also when it was selected already
         }
     }
 }
@@ -187,6 +189,7 @@ func insightTest() {
     var ignored = g("Claude", 5000)
     ignored.ignored = true
     precondition(run([ignored], none, grows) == nil)  // never flagged: it does not grow out loud either
+    precondition(run([g("kernel_task", 7000, isApp: false, uid: 0)], none, rise(["kernel_task|false": (3000, 10)])) == nil)  // no Restart for root
     precondition(run([g("iOS Simulator", 1023, isApp: false, path: "launchd_sim")], none, flat) == nil)
     precondition(run([g("iOS Simulator", 4000, isApp: false, path: "/CoreSimulatorService")], none, flat) == nil)  // no device booted
     precondition(run([g("iOS Simulator", 4000, isApp: false, leftover: true, path: "launchd_sim")], none, flat, header: 4000 * mb) == nil)  // a leftover: Stop is on its row

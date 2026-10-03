@@ -39,6 +39,7 @@ final class Nav: ObservableObject {
     @Published var sel: RowID?
     @Published var expanded: Set<String> = []  // group ids
     @Published var all: Set<String> = []  // groups that show all their processes, not the top 10
+    @Published var shows = 0  // the insight's Show adds one: scrolls(to:) then scrolls also to a line that was selected already
     var focusList = {}  // the Panel sets it: after a click, keys act on the clicked line
     #if DEBUG
     static weak var shown: Nav?  // the panel's: --drive checks what its keys did (Drive.swift)
@@ -130,11 +131,14 @@ extension View {
         }
     }
 
-    /// Keeps the selection in view as keys move it. No animation: keys repeat fast. A group
-    /// by its ForEach id: the lazy stack finds that one also for a row it has not built yet.
-    func scrolls(to sel: RowID?) -> some View {
-        ScrollViewReader { proxy in
-            onChange(of: sel) { _, s in if let s { s.pid == nil ? proxy.scrollTo(s.group) : proxy.scrollTo(s) } }
+    /// Keeps the selection in view as keys move it, and on `nav.shows` (onChange skips a selection
+    /// that did not change). No animation: keys repeat fast. A group by its ForEach id: the lazy
+    /// stack finds that one also for a row it has not built yet.
+    func scrolls(to nav: Nav) -> some View {
+        let sel = nav.sel, shows = nav.shows  // read in the Panel's body, which observes nav
+        return ScrollViewReader { proxy in
+            let go = { if let s = nav.sel { s.pid == nil ? proxy.scrollTo(s.group) : proxy.scrollTo(s) } }
+            onChange(of: sel) { go() }.onChange(of: shows) { go() }
         }
     }
 }
