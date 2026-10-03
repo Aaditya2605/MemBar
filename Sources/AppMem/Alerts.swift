@@ -113,6 +113,11 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
     private var open: () -> Void = {}
     private var stopAfterScan: String?  // the group of a Stop clicked in a notification
     private var watch: NSKeyValueObservation?
+    // Toggles turned on that wait for macOS's answer. Main thread only. macOS drops an alert
+    // sent before the first answer, so check() keeps the old state until then: the events of
+    // that wait are still new and alert after Allow. ponytail: only a prompt of this launch;
+    // a toggle left on with the prompt not answered at quit sends alerts that macOS drops.
+    private static var asking = 0
 
     /// nil outside an .app (the bare debug binary): there the center raises an exception.
     static var center: UNUserNotificationCenter? { Bundle.main.bundleIdentifier == nil ? nil : .current() }
@@ -130,7 +135,7 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
 
     /// After each scan (Model.onUpdate).
     func check() {
-        guard let model else { return }
+        guard let model, Self.asking == 0 else { return }
         let d = UserDefaults.standard
         let s = AlertSettings(leftovers: d.bool(forKey: "alertLeftovers"), pressure: d.bool(forKey: "alertPressure"),
                               growth: d.bool(forKey: "alertGrowth"), limits: d.bool(forKey: "alertLimits"), limitMB: d.limits)
@@ -162,9 +167,12 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
     /// answers at once. Denied: the toggle goes off again, and an alert says where to allow it.
     static func allow(_ key: String) {
         guard let center else { return UserDefaults.standard.set(false, forKey: key) }
+        asking += 1
         center.requestAuthorization(options: [.alert]) { ok, _ in
-            if ok { return }
             DispatchQueue.main.async {
+                asking -= 1
+                // Rescan: what came while macOS asked alerts now, not with a scan up to 60 s later.
+                if ok { (NSApp.delegate as? Delegate)?.model.refresh(); return }
                 UserDefaults.standard.set(false, forKey: key)
                 let a = NSAlert()
                 a.messageText = "Notifications are off for AppMem"
