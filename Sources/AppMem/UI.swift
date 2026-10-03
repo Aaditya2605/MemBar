@@ -239,9 +239,9 @@ struct Panel: View {
     }
 }
 
-/// The processes of `g` whose name contains `q`, or whose PID or a port is `q`: the search's text.
+/// The processes of `g` whose name or site/role (Names.swift) contains `q`, or whose PID or a port is `q`: the search's text.
 func matching(_ g: Group, _ q: String) -> [Proc] {
-    g.procs.filter { $0.name.lowercased().contains(q) || String($0.pid) == q || portMatch($0.ports, q) }
+    g.procs.filter { $0.name.lowercased().contains(q) || String($0.pid) == q || portMatch($0.ports, q) || Names.of($0, in: g.name).lowercased().contains(q) }
 }
 
 /// App icons, cached: NSWorkspace reads them from disk.

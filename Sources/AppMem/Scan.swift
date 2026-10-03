@@ -674,6 +674,7 @@ func selfTest() {
     let mixed = Group(name: "X", isApp: true, procs: [procs[10]!, Proc(pid: 2, ppid: 1, uid: 0, path: "/usr/sbin/d", mem: 1)])
     precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
                  && othersHelp(byName["Cursor"]!, uid: 501) == "")
+    do { namesTest() }  // Names.swift: site names of web content, Chromium roles
 
     do {  // keyboard: the next selection, the selection after a refresh, keys that type, Stop
         let a = RowID(group: "A"), a1 = RowID(group: "A", pid: 1), b = RowID(group: "B"), ids = [a, a1, b]

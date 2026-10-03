@@ -78,9 +78,9 @@ struct ProcList: View {
         // Lazy: "Show all" on the macOS group is hundreds of lines and argv reads.
         LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(procLines(procs, all: all), id: \.proc.pid) { r in
-                let id = RowID(group: g.id, pid: r.proc.pid)
+                let id = RowID(group: g.id, pid: r.proc.pid), name = Names.of(r.proc, in: g.name)  // a site or role (Names.swift)
                 HStack(spacing: 6) {  // 6 as in the group row: the CPU column lines up
-                    Text(r.proc.name).lineLimit(1).truncationMode(.middle)
+                    Text(name).lineLimit(1).truncationMode(.middle)
                     // Not wrapped, the name truncates instead. The group badge needs all of them paused.
                     if r.proc.stopped { Badge.paused.fixedSize() }
                     // Next to "paused" only the icon, as in the group row: indented, the name has no room left.
@@ -95,7 +95,8 @@ struct ProcList: View {
                 .contentShape(Rectangle())  // tooltip, click and right-click in the gaps too
                 .onTapGesture { nav.click(id) }
                 // It hides the chip's own tooltip (an outer .help wins), so the ports are in it.
-                .help(Args.of(r.proc) + (r.proc.ports.isEmpty ? "" : "\n" + portsHelp(r.proc.ports)))
+                // A site or role as the name: the executable's name first.
+                .help((name == r.proc.name ? "" : r.proc.name + "\n") + Args.of(r.proc) + (r.proc.ports.isEmpty ? "" : "\n" + portsHelp(r.proc.ports)))
                 .contextMenu { ProcMenu(p: r.proc, g: g) }
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(nav.sel == id ? .isSelected : [])
