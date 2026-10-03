@@ -838,6 +838,7 @@ func selfTest() {
         precondition(partHelp(p[0], note: note) == "A 3.00 GB\n" + note && partHelp(p[4], note: note).hasPrefix("Other apps 512 MB: the other groups\n"))
         precondition(partHelp(p[5], note: note) == "Wired 2.00 GB: memory the system keeps in RAM; it cannot be compressed or swapped")
         precondition(ramLabel(Array(p.suffix(2))) == "RAM: Compressed 1.00 GB, Cached and free 5.00 GB")
+        precondition(ramLabel(Array(p.suffix(1)), note: note) == "RAM: Cached and free 5.00 GB. " + note)  // VoiceOver cannot reach the .help
     }
     recallTest()
     alertsTest()

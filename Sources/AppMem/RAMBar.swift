@@ -73,9 +73,10 @@ func partHelp(_ p: (name: String, bytes: Int64, colorIndex: Int), note: String?)
     return "\(p.name) \(fmt(p.bytes))\(what)" + (p.colorIndex <= ramSlots ? note.map { "\n" + $0 } ?? "" : "")
 }
 
-/// VoiceOver: "RAM: Claude 3.10 GB, macOS 3.00 GB, …, Cached and free 4.20 GB".
-func ramLabel(_ parts: [(name: String, bytes: Int64, colorIndex: Int)]) -> String {
-    "RAM: " + parts.map { "\($0.name) \(fmt($0.bytes))" }.joined(separator: ", ")
+/// VoiceOver: "RAM: Claude 3.10 GB, macOS 3.00 GB, …, Cached and free 4.20 GB", then the scale
+/// note: the parts' .help is out of VoiceOver's reach, and the scaled sizes disagree with the rows'.
+func ramLabel(_ parts: [(name: String, bytes: Int64, colorIndex: Int)], note: String? = nil) -> String {
+    "RAM: " + parts.map { "\($0.name) \(fmt($0.bytes))" }.joined(separator: ", ") + (note.map { ". " + $0 } ?? "")
 }
 
 /// The thin stacked bar. No animation: it changes a little at each scan, and a jump is calmer

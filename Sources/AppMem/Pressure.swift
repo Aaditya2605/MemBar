@@ -54,9 +54,10 @@ struct PressureBar: View {
 
     var body: some View {
         let parts = segments(groups: groups, sys: sys, physical: Int64(ProcessInfo.processInfo.physicalMemory), slots: slots)
+        let note = scaleNote(groups, sys: sys)
         Button { shown.toggle() } label: {
             HStack(spacing: 6) {
-                RAMBar(parts: parts, note: scaleNote(groups, sys: sys))
+                RAMBar(parts: parts, note: note)
                 // Here, not on the button: an outer .help hides the bar's own.
                 HStack(spacing: 4) {
                     Circle().fill(sys.pressure.color).frame(width: 6, height: 6)
@@ -67,7 +68,7 @@ struct PressureBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(ramLabel(parts))
+        .accessibilityLabel(ramLabel(parts, note: note))
         .accessibilityValue("Memory pressure \(sys.pressure.label), \(sys.usedPct)%")
         .accessibilityHint("Shows the memory breakdown")
         .popover(isPresented: $shown, arrowEdge: .bottom) { Breakdown(sys: sys) }
