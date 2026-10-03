@@ -37,8 +37,8 @@ extension Model {
     /// extension (.md, .csv, .json) picks the format.
     func saveReport() {
         let groups = groups, sys = sys, flags = reportFlags, date = Date()
-        // Async: the gear menu is not done yet. An app-modal panel of its own, not a sheet on the
-        // popover: when the transient popover closes, the panel stays.
+        // Async: the gear menu is not done yet. A panel of its own, not a sheet on the popover:
+        // when the transient popover closes, the panel stays.
         DispatchQueue.main.async {
             let df = DateFormatter()
             df.locale = Locale(identifier: "en_US_POSIX")
@@ -50,13 +50,18 @@ extension Model {
             panel.showsTagField = false  // its tags would be ours to set
             panel.nameFieldStringValue = "AppMem Report \(df.string(from: date)).md"  // with its extension: else ".05" of the time reads as one
             NSApp.activate(ignoringOtherApps: true)  // else the panel opens behind the frontmost app
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            let text = switch url.pathExtension.lowercased() {
-            case "csv": csvReport(groups, flags: flags)
-            case "json": String(decoding: jsonReport(groups, sys: sys, cpu: true), as: UTF8.self) + "\n"
-            default: report(groups: groups, sys: sys, date: date, flags: flags) + "\n"
+            // begin, not runModal: a modal loop inside this main-queue block holds back every other
+            // main-queue job (scans, pressure, SIGTERM, the reopen after a quit) until the panel closes.
+            panel.begin { r in
+                guard r == .OK, let url = panel.url else { return }
+                let text = switch url.pathExtension.lowercased() {
+                case "csv": csvReport(groups, flags: flags)
+                case "json": String(decoding: jsonReport(groups, sys: sys, cpu: true), as: UTF8.self) + "\n"
+                default: report(groups: groups, sys: sys, date: date, flags: flags) + "\n"
+                }
+                // ponytail: this alert is modal and can hold back main-queue jobs too; a failed write is rare and the alert short.
+                do { try Data(text.utf8).write(to: url, options: .atomic) } catch { NSAlert(error: error).runModal() }
             }
-            do { try Data(text.utf8).write(to: url, options: .atomic) } catch { NSAlert(error: error).runModal() }
         }
     }
 }
