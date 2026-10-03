@@ -685,6 +685,16 @@ func selfTest() {
         precondition(argvEnv(argc2 + Array("/bin/sleep\0\0/bin/sleep\0600\0".utf8)).env.isEmpty)  // Apple's own: no environment
         let mine = argvEnv(procArgs(getpid()) ?? []).env  // its own is always readable; the kernel's strings after it are not in it
         precondition(argvEnv([1, 0]) == ([], []) && !mine.isEmpty && !mine.contains { $0.hasPrefix("ptr_munge=") })
+        // node's process.title over the arguments, NULs after it (as read from real node processes):
+        // fewer NULs than arguments, more, and a title cut to fill them all; argv then reads as the title.
+        func titled(_ argc: Int32, _ s: String) -> (argv: [String], env: [String]) {
+            argvEnv(withUnsafeBytes(of: argc) { Array($0) } + Array(("/bin/node\0\0" + s + "\0\0\0ptr_munge=\0\0main_stack=\0").utf8))
+        }
+        let vars = ["AAA_FIRST=1", "PATH=/x"], next = titled(4, "next-server\0\0\0\0\0\0AAA_FIRST=1\0PATH=/x")
+        precondition(next.env == vars && commandLine("/bin/node", next.argv) == "next-server")
+        precondition(titled(3, "AAAA\0\0AAA_FIRST=1\0PATH=/x") == (["AAAA", ""], vars) && titled(3, "BBBB\0AAA_FIRST=1\0PATH=/x") == (["BBBB"], vars))
+        precondition(titled(2, "node\0x.js") == (["node", "x.js"], []) && titled(1, "node") == (["node"], []))  // no environment: not the kernel's strings
+        precondition(argvEnv(args) == (["node", "", "--port=1"], ["PATH=/x"]))  // an empty argument, then one that is not NAME=value
         let env = envPairs(["b=2", "A=1=x", "API_KEY=k", "NOEQ", "a=3"])
         precondition(env.map(\.name) == ["A", "API_KEY", "NOEQ", "a", "b"] && env[0].value == "1=x" && env[2].value == "")
         precondition(["GITHUB_TOKEN", "api_key", "SSH_AUTH_SOCK", "Session_Id", "db_password", "COOKIE", "aws_secret_access_key"].allSatisfy(isSecret))

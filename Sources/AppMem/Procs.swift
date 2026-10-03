@@ -26,14 +26,22 @@ func tree(_ procs: [Proc]) -> [(proc: Proc, depth: Int)] {
 /// padding, argc NUL-terminated arguments, then the "NAME=value" strings up to an empty one.
 /// After that come more NULs and the kernel's own strings (ptr_munge=, executable_file=): not
 /// the environment. macOS leaves the environment out for its own programs (/bin/zsh, Finder).
+/// A title (node's process.title: npm, next-server, pm2) goes over argv[0] with NULs over the other
+/// arguments, so argc parts can end inside those NULs or past the first variables: then the environment
+/// starts after the NULs. No call says where the arguments end, so a title is told by the parts after
+/// argv[0] up to argc: all empty or "NAME=value" (ps guesses by "=" too).
+/// ponytail: `make A=1` reads as a title, and a title with no environment at all would show the
+/// kernel's strings; add a check if such a process shows up.
 func argvEnv(_ buf: [UInt8]) -> (argv: [String], env: [String]) {
     guard buf.count > 4 else { return ([], []) }
     let argc = max(0, Int(buf.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }))
     var i = buf[4...].firstIndex(of: 0) ?? buf.endIndex
     while i < buf.endIndex, buf[i] == 0 { i += 1 }
-    let parts = buf[i...].split(separator: 0, omittingEmptySubsequences: false)
-    return (parts.prefix(argc).map { String(decoding: $0, as: UTF8.self) },
-            parts.dropFirst(argc).prefix { !$0.isEmpty }.map { String(decoding: $0, as: UTF8.self) })
+    let parts = buf[i...].split(separator: 0, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
+    let isVar = { (s: String) in (s.first?.isLetter == true || s.first == "_") && s.contains("=") }  // not "--port=1"
+    let next = parts.indices.dropFirst().first { !parts[$0].isEmpty } ?? parts.endIndex  // after argv[0] and any fill
+    let start = argc > 1 && parts[next..<max(next, min(argc, parts.count))].allSatisfy(isVar) ? next : argc
+    return (Array(parts.prefix(min(argc, start))), Array(parts.dropFirst(start).prefix { !$0.isEmpty }))
 }
 
 /// The arguments alone: the command line, the simulator's device.
