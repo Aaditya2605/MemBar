@@ -19,6 +19,7 @@ final class Model: ObservableObject {
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
+    private var prevIO: [pid_t: IO] = [:]  // queue only
     private var ports: [pid_t: [UInt16]] = [:], portsAt = Date.distantPast  // queue only
     private var recall = Recall()  // queue only
     private var orphans = Orphans()  // queue only
@@ -61,6 +62,7 @@ final class Model: ObservableObject {
             if open { addPorts(&procs, ports) }
             Sims.update(procs, open: open, force: force)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
+            addIO(&procs, prev: prevIO, seconds: -prevAt.timeIntervalSinceNow); prevIO = procs.mapValues(\.io)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = orphans.mark(ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), procs, open: open)
             let s = systemMem()
@@ -323,7 +325,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.orphan ? ", orphan" : g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), change?.help, others.isEmpty ? nil : others]
+                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), change?.help, ioNote(g), others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 .accessibilityAction(named: "Show Details") { Details.show(g) }
                 .accessibilityAddTraits(picked ? .isSelected : [])
@@ -345,6 +347,7 @@ struct Row: View {
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit().fixedSize().help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
+                            .help(cpuHelp(g))  // power and disk too (Energy.swift)
                         Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                     }
                     .padding(.trailing, 10).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
@@ -490,9 +493,11 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     let top = topMem()
     var procs = scan(top: top)
     let prev = procs.mapValues(\.cpuTime)
+    let prevIO = procs.mapValues(\.io)
     Thread.sleep(forTimeInterval: 1)
     procs = scan(top: top)
     addCPU(&procs, prev: prev, seconds: 1)
+    addIO(&procs, prev: prevIO, seconds: 1)
     addPorts(&procs, listenPorts(procs))
     Sims.booted = Sims.read(procs.values.filter { $0.name == "launchd_sim" })  // not update(): it posts to main, too late for the layout
     model.groups = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)

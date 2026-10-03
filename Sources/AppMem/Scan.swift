@@ -13,6 +13,7 @@ struct Proc {
     var ports: [UInt16] = []  // TCP ports it listens on, read only while the panel is open
     var stopped = false  // SIGSTOP: paused by AppMem, a debugger or ctrl-Z in a shell
     var peak: Int64 = 0  // the most memory since it started; 0 when not readable (other users)
+    var io = IO()  // energy and disk counters, and their rates since the previous scan (Energy.swift)
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -254,14 +255,15 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
     var procs: [pid_t: Proc] = [:]
     for pid in pids.prefix(max(n, 0)) {
         guard let s = shortInfo(pid) else { continue }  // gone
-        var ri = rusage_info_v4()
+        var ri = rusage_info_v6()  // V6, not V4: its ri_energy_nj is the process's own energy (Energy.swift)
         let ok = withUnsafeMutablePointer(to: &ri) {
-            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) }
         } == 0
         procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: path(of: pid, comm: comm(s)),
                           mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0,
                           cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0,
                           stopped: s.pbsi_status == SSTOP, peak: ok ? Int64(ri.ri_lifetime_max_phys_footprint) : 0)
+        if ok { procs[pid]!.io = IO(ri) }
     }
     return procs
 }
@@ -405,6 +407,35 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+    do {  // Energy.swift: power and disk rates between scans, their text
+        func io(_ start: UInt64, _ nJ: UInt64, _ read: UInt64, _ write: UInt64) -> IO { IO(start: start, energy: nJ, read: read, write: write) }
+        let prev: [pid_t: IO] = [10: io(7, 3_000_000_000, 1 << 20, 0), 11: io(5, 1, 0, 0), 20: io(9, 5000, 0, 0)]
+        var ps = procs
+        ps[10]!.io = io(7, 9_000_000_000, 3 << 20, 1 << 20)  // +6 J, +2 MB read, +1 MB written
+        ps[11]!.io = io(8, 9_000_000_000, 4 << 20, 0)  // a reused PID: another start, higher counters
+        ps[20]!.io = io(9, 1000, 0, 0)  // a counter that went back
+        ps[21]!.io = io(3, 9_000_000_000, 1 << 30, 0)  // new since the last scan
+        var still = ps
+        addIO(&ps, prev: prev, seconds: 2)
+        precondition(ps[10]!.io.power == 3000 && ps[10]!.io.readRate == 1_048_576 && ps[10]!.io.writeRate == 524_288 && ps[10]!.io.disk == 1_572_864)
+        precondition([11, 20, 21].allSatisfy { ps[$0]!.io.power == 0 && ps[$0]!.io.disk == 0 })
+        addIO(&still, prev: prev, seconds: 0)  // no time: no rate, never a division by 0
+        precondition(still.values.allSatisfy { $0.io.power == 0 && $0.io.disk == 0 })
+        precondition(perSecond(10, 4, 2) == 3 && perSecond(4, 10, 2) == 0 && perSecond(10, 4, 0) == 0 && perSecond(10, 4, -1) == 0)
+        let g = Group(name: "Cursor", isApp: true, procs: [ps[10]!, ps[11]!])
+        precondition(g.power == 3000 && g.disk == 1_572_864)
+        precondition(watts(0.4) == "–" && watts(350) == "350 mW" && watts(999.6) == "1.0 W" && watts(12_340) == "12.3 W")
+        precondition(diskText(1000) == "–" && diskText(1000, none: "0") == "0" && diskText(120 * 1024) == "120 KB/s")
+        precondition(diskText(999 * 1024) == "999 KB/s" && diskText(3 * 1_048_576) == "3 MB/s" && diskText(1536 * 1_048_576) == "1.5 GB/s")
+        precondition(cpuHelp(g) == "% of one core since the last scan\nPower about 3.0 W · Disk 2 MB/s")
+        precondition(ioNote(Group(name: "A", isApp: true, procs: [ps[11]!])) == nil && cpuHelp(Group(name: "A", isApp: true)) == "% of one core since the last scan")
+        var busy = ps[11]!
+        busy.io.power = 120; busy.io.readRate = 921_600  // 0.12 W, but under 1 MB/s (900 KB/s)
+        precondition(ioNote(Group(name: "A", isApp: true, procs: [busy])) == "Power about 120 mW")
+        precondition(diskHelp(ps[10]!.io) == "Read 1 MB/s, write 512 KB/s since the last scan" && diskHelp(busy.io) == "Read 900 KB/s, write 0 since the last scan")
+        precondition(diskHelp(IO()) == "Not readable: it runs as another user")
+        precondition(scan(top: [:])[getpid()]!.io.start > 0)  // the V6 call works here
+    }
 
     // Ports: network byte order in, IPv4 + IPv6 of one port = one port.
     precondition(ports(fromLPorts: [Int32(UInt16(3000).bigEndian), Int32(UInt16(9229).bigEndian), Int32(UInt16(3000).bigEndian)]) == [3000, 9229])
