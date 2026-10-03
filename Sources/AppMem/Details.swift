@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 // The Details window: one group's processes as a full table, with the columns the
-// 400 pt panel has no room for. One window, reused. While it is open the Model scans as
-// if the panel were open; closed, its view goes, so nothing reads or refreshes for it.
+// 400 pt panel has no room for. One window, reused. While it is open and visible the Model
+// scans as if the panel were open; covered, it scans as closed; closed, its view goes too.
 
 /// One table line: the scan's Proc, plus what the scan does not read. -1 threads and
 /// distantPast: not readable (another user's process, or it is gone).
@@ -197,6 +197,11 @@ enum Details {
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
             w.contentView = nil  // the table stops observing the model and reading threads
             (NSApp.delegate as? Delegate)?.model.windowOpen = false
+        }
+        // Covered, on another Space, screen locked: no Dock icon to find it again, so it can stay
+        // behind for hours; scan as closed until it is visible again (then one refresh at once).
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { _ in
+            (NSApp.delegate as? Delegate)?.model.windowOpen = w.occlusionState.contains(.visible)
         }
         window = w
         return w
