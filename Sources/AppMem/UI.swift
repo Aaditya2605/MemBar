@@ -14,6 +14,7 @@ final class Model: ObservableObject {
     private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
+    private var ports: [pid_t: [UInt16]] = [:], portsAt = Date.distantPast  // queue only
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
     var total: Int64 { groups.reduce(0) { $0 + $1.mem } }
@@ -32,6 +33,10 @@ final class Model: ObservableObject {
             // with the panel open. The icon needs only this user's processes.
             if open, force || -topAt.timeIntervalSinceNow > 30 { top = topMem(); topAt = Date() }
             var procs = scan(top: top)
+            // Listening ports only with the panel open, at most every 10 s or on Refresh: a
+            // pass reads each fd of each of this user's processes (about 2 ms for 420 here).
+            if open, force || -portsAt.timeIntervalSinceNow > 10 { ports = listenPorts(procs); portsAt = Date() }
+            addPorts(&procs, ports)
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
             let g = group(procs, responsible: responsible), s = systemMem()
@@ -91,7 +96,7 @@ struct Panel: View {
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 PressureBar(sys: model.sys).font(.caption).foregroundStyle(.secondary)
                 RAMChart(samples: model.history.samples)
-                TextField("Search apps, processes or PIDs", text: $query)
+                TextField("Search apps, processes, PIDs or :ports", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.small)
             }
@@ -129,9 +134,9 @@ struct Panel: View {
     }
 }
 
-/// The processes of `g` whose name contains `q`, or whose PID is `q`.
+/// The processes of `g` whose name contains `q`, or whose PID or a port is `q`.
 func matching(_ g: Group, _ q: String) -> [Proc] {
-    g.procs.filter { $0.name.lowercased().contains(q) || String($0.pid) == q }
+    g.procs.filter { $0.name.lowercased().contains(q) || String($0.pid) == q || portMatch($0.ports, q) }
 }
 
 /// App icons, cached: NSWorkspace reads them from disk.
@@ -179,6 +184,7 @@ struct Row: View {
                             Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
                                 .help("Memory is growing: \(growing)")
                         }
+                        if !g.ports.isEmpty { PortChip(ports: g.ports, network: true, limit: g.leftover ? 0 : growing == nil ? 2 : 1) }
                         Spacer(minLength: 4)
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -188,7 +194,7 @@ struct Row: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")")
+                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
@@ -200,6 +206,7 @@ struct Row: View {
                 ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
                     HStack {
                         Text(p.name).lineLimit(1).truncationMode(.middle)
+                        if !p.ports.isEmpty { PortChip(ports: p.ports) }
                         Spacer()
                         Text(String(p.pid)).monospacedDigit()
                         Text(cpu(p.cpu)).monospacedDigit().frame(width: 40, alignment: .trailing)
@@ -308,6 +315,7 @@ func snapshot(to path: String, query: String) {
     Thread.sleep(forTimeInterval: 1)
     procs = scan(top: top)
     addCPU(&procs, prev: prev, seconds: 1)
+    addPorts(&procs, listenPorts(procs))
     model.groups = group(procs, responsible: responsible)
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
