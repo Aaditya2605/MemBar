@@ -10,6 +10,7 @@ struct Proc {
     let mem: Int64  // physical footprint in bytes ("Memory" in Activity Monitor)
     var cpuTime: UInt64 = 0  // user + system CPU time since start, in ns
     var cpu: Double = 0  // % of one core since the previous scan
+    var ports: [UInt16] = []  // TCP ports it listens on, read only while the panel is open
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -259,14 +260,18 @@ func stop(_ g: Group) {
 
 /// `AppMem --list`: the prototype's output, to compare the two.
 func printGroups() {
-    let groups = group(scan(top: topMem()), responsible: responsible).sorted { $0.mem > $1.mem }
+    var procs = scan(top: topMem())
+    addPorts(&procs, listenPorts(procs))
+    let groups = group(procs, responsible: responsible).sorted { $0.mem > $1.mem }
     let sys = systemMem()
     print("apps \(fmt(groups.reduce(0) { $0 + $1.mem })), RAM \(fmt(sys.ram)), swap \(fmt(sys.swap))")
     for g in groups.prefix(20) {
         let flag = g.leftover ? (g.isSimulator ? "   <-- DEVICE RUNNING, SIMULATOR NOT OPEN" : "   <-- APP NOT OPEN") : ""
         print("\n" + g.name.padding(toLength: max(28, g.name.count), withPad: " ", startingAt: 0),
               fmt(g.mem).leftPad(9), String(g.procs.count).leftPad(4), "procs" + flag)
-        for p in g.procs.prefix(5) { print("    " + fmt(p.mem).leftPad(9), String(p.pid).leftPad(6), p.name) }
+        for p in g.procs.prefix(5) {
+            print("    " + fmt(p.mem).leftPad(9), String(p.pid).leftPad(6), p.name + (p.ports.isEmpty ? "" : "  " + portsText(p.ports)))
+        }
     }
     for g in groups where g.leftover { print("leftover: \(g.name) \(fmt(g.mem)) pids \(g.procs.map(\.pid))") }
 }
@@ -324,5 +329,16 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+
+    // Ports: network byte order in, IPv4 + IPv6 of one port = one port.
+    precondition(ports(fromLPorts: [Int32(UInt16(3000).bigEndian), Int32(UInt16(9229).bigEndian), Int32(UInt16(3000).bigEndian)]) == [3000, 9229])
+    precondition(portsText([3000, 9229]) == ":3000 :9229" && portsText([1, 2, 3, 4], limit: 2) == ":1 :2 +2" && portsText([]) == "")
+    precondition(portMatch([3000, 9229], "3000") && portMatch([3000], ":3000") && !portMatch([3000], "300") && !portMatch([3000], ":"))
+    precondition(portsLabel([]) == "" && portsLabel([80]) == ", listens on port 80" && portsLabel([80, 443]) == ", listens on ports 80, 443")
+    var pp = procs
+    addPorts(&pp, [11: [3000], 20: [9229, 3000], 777: [1]])  // 777: gone since the read
+    let pg = Dictionary(uniqueKeysWithValues: group(pp, responsible: { resp[$0] ?? -1 }).map { ($0.name, $0) })
+    precondition(pg["Cursor"]!.ports == [3000] && pg["Claude"]!.ports == [3000, 9229] && pg["macOS"]!.ports.isEmpty)
+    precondition(matching(pg["Cursor"]!, ":3000").map(\.pid) == [11] && matching(pg["Claude"]!, "9229").map(\.pid) == [20])
     print("ok")
 }
