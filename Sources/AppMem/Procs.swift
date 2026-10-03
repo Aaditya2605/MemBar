@@ -82,7 +82,7 @@ struct ProcList: View {
                 HStack(spacing: 6) {  // 6 as in the group row: the CPU column lines up
                     Text(r.proc.name).lineLimit(1).truncationMode(.middle)
                     // Not wrapped, the name truncates instead. The group badge needs all of them paused.
-                    if r.proc.stopped { Text("paused").flag().fixedSize() }
+                    if r.proc.stopped { Badge.paused.fixedSize() }
                     // Next to "paused" only the icon, as in the group row: indented, the name has no room left.
                     if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports, network: r.proc.stopped, limit: r.proc.stopped ? 0 : 2) }
                     Spacer()

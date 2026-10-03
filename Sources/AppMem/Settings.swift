@@ -50,6 +50,7 @@ struct SettingsMenu: View {
     @State private var login = false
     @State private var ignored: [String] = []
     @State private var recent: [Freed.Entry] = []  // Stop and the auto rules write the log
+    @State private var legend = false  // What the Badges Mean (Legend.swift)
 
     var body: some View {
         Menu {
@@ -77,7 +78,10 @@ struct SettingsMenu: View {
             Divider()  // what to do with the numbers now
             Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
             Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
+            Button("Save Report…") { (NSApp.delegate as? Delegate)?.model.saveReport() }  // Markdown, CSV or JSON (Export.swift)
             Divider()
+            // Async: a popover shown while the menu closes can close at once.
+            Button("What the Badges Mean") { DispatchQueue.main.async { legend = true } }
             Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
             Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
@@ -86,6 +90,7 @@ struct SettingsMenu: View {
         .menuStyle(.button).buttonStyle(.borderless).menuIndicator(.hidden).fixedSize()
         .help("Settings")
         .accessibilityLabel("Settings")
+        .popover(isPresented: $legend, arrowEdge: .bottom) { BadgeLegend() }  // over the panel, not a window
         .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
             login = SMAppService.mainApp.status == .enabled
             ignored = UserDefaults.standard.ignored

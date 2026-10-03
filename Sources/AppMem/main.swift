@@ -5,6 +5,7 @@ if CommandLine.arguments.contains("--list") { printGroups(); exit(0) }
 if let status = runCLI(Array(CommandLine.arguments.dropFirst())) { exit(status) }  // CLI.swift
 #if DEBUG
 if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
+    if ProcessInfo.processInfo.environment["LEGEND"] != nil { snapshotLegend(to: CommandLine.arguments[i + 1]); exit(0) }  // Legend.swift
     snapshot(to: CommandLine.arguments[i + 1]) { Panel(model: $0, query: CommandLine.arguments.dropFirst(i + 2).first ?? "") }
     exit(0)
 }

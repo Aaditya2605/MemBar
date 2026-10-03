@@ -176,6 +176,7 @@ struct Panel: View {
             .font(.caption).padding(.horizontal, 10)
             Divider()
             let s = shown, typed = query.trimmingCharacters(in: .whitespaces)  // shown sorts: once per render
+            IntroCard()  // Legend.swift. Not in the lazy list: scrolled away, it would drop its close watch
             ScrollView {
                 LazyVStack(spacing: 0) {
                     let q = q, d = markDelta
@@ -287,19 +288,19 @@ struct Row: View {
                         icon.frame(width: 16, height: 16)
                         Text(g.name).lineLimit(1).truncationMode(.middle)
                         if g.orphan {  // orange only when counted as a leftover (Settings)
-                            Text("orphan").flag(g.leftover ? .leftover : .secondary).help(flagHelp(g))
+                            Badge.orphan(leftover: g.leftover).help(flagHelp(g))
                         } else if g.leftover {
-                            Text("leftover").flag(.leftover).help(flagHelp(g))
+                            Badge.leftover.help(flagHelp(g))
                         }
                         if let why = g.respawns {  // an icon: a second word would squeeze the name
-                            Image(systemName: "arrow.triangle.2.circlepath").flag(.leftover).help(why).accessibilityLabel("Respawns")
+                            Badge.respawns.help(why)
                         }
                         if let quitIdle {
-                            Image(systemName: "timer").flag().help(quitIdle + ". Right-click to change.").accessibilityLabel("Quits when idle")
+                            Badge.quitIdle.help(quitIdle + ". Right-click to change.")
                         }
-                        if paused { Text("paused").flag().help("Paused: its processes do not run. Right-click to resume.") }
+                        if paused { Badge.paused.help("Paused: its processes do not run. Right-click to resume.") }
                         UsageBadge(g: g)
-                        if let growing { Image(systemName: "arrow.up.right").flag(.red).help("Memory is growing: \(growing)") }
+                        if let growing { Badge.growing.help("Memory is growing: \(growing)") }
                         LimitBell(g: g)
                         // Only where a port tells what the group is (a dev server, a leftover's or orphan's
                         // socket); an app's own ports are noise here, and stay in its lines, the search and VoiceOver.
@@ -502,6 +503,10 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
     model.mark = ProcessInfo.processInfo.environment["MARK"] != nil ? .demo(model.groups, sys: model.sys) : nil  // never the saved one
+    // FIRSTRUN=1: the first-run card. In the argument domain: in memory, never the saved flag.
+    let args = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    UserDefaults.standard.setVolatileDomain(args.merging(["introSeen": ProcessInfo.processInfo.environment["FIRSTRUN"] == nil]) { $1 },
+                                            forName: UserDefaults.argumentDomain)
     let view = NSHostingView(rootView: make(model))
     view.frame = NSRect(origin: .zero, size: size)
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)

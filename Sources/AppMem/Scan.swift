@@ -524,6 +524,25 @@ func selfTest() {
         precondition(Delegate.instancesRespond(to: NSSelectorFromString("applicationWillFinishLaunching:")))
     }
 
+    do {  // Export.swift: Save Report's CSV, one row per process; a name with a comma, a quote or a line break stays one field
+        precondition(csvField("node") == "node" && csvField("") == "" && csvField("a,b") == "\"a,b\"" && csvField("say \"hi\"") == "\"say \"\"hi\"\"\"")
+        precondition(csvField("a\nb") == "\"a\nb\"" && csvField("a\r\nb") == "\"a\r\nb\"" && csvField("a\rb") == "\"a\rb\"")
+        var odd = Group(name: "Foo, \"Bar\"", isApp: true, procs: [Proc(pid: 7, ppid: 1, uid: 0, path: "/x/two\nlines", mem: 5 << 20, stopped: true),
+                                                                Proc(pid: 8, ppid: 7, uid: 501, path: "/x/b", mem: 1 << 20)], leftover: true)
+        odd.procs[0].cpu = 12.34; odd.procs[0].ports = [3000, 9229]; odd.respawns = "x"
+        precondition(csvReport([odd], flags: { _ in ["idle"] }, user: { $0 == 0 ? "root" : "ann" }) == #"""
+            group,pid,name,user,memory_bytes,cpu_percent,ports,flags
+            "Foo, ""Bar""",7,"two
+            lines",root,5242880,12.3,3000 9229,leftover respawns idle paused
+            "Foo, ""Bar""",8,b,ann,1048576,0.0,,leftover respawns idle
+
+            """#)
+        precondition(csvReport(groups).split(separator: "\n").count == 1 + procs.count && csvReport([]) == "group,pid,name,user,memory_bytes,cpu_percent,ports,flags\n")
+        var orphan = odd
+        orphan.orphan = true; orphan.respawns = nil
+        precondition(flagWords(orphan) == ["orphan"] && flagWords(byName["Claude"]!).isEmpty)  // as the row: orphan, not leftover too
+    }
+
     do {  // simulator devices, the Android emulator group
         let a = "193A1049-1F4C-44E8-83CB-BFD1ED9F19CA", b = "0D9C2F1E-7B3A-4C8D-9E6F-112233445566", devs = "/Users/a/Library/Developer/CoreSimulator/Devices/"
         precondition(udid(in: devs + a + "/data/Containers/Bundle/Application/X/My.app/My") == a)
