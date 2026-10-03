@@ -297,7 +297,8 @@ func snapshot(to path: String, query: String) {
     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
     if ProcessInfo.processInfo.environment["DARK"] != nil { window.appearance = NSAppearance(named: .darkAqua) }
     window.contentView = view
-    window.orderFrontRegardless()  // SwiftUI draws text only in a window on screen
+    window.setFrameOrigin(NSPoint(x: -20000, y: -20000))  // off screen, but ordered in:
+    window.orderFrontRegardless()  // SwiftUI draws text only in a window that is ordered in
     RunLoop.main.run(until: Date() + 1)  // SwiftUI lays out on the run loop
     // cacheDisplay misses SwiftUI's text layers; render the layer tree instead.
     guard let layer = view.layer, let rep = NSBitmapImageRep(
