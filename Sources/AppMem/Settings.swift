@@ -64,7 +64,7 @@ struct SettingsMenu: View {
             Toggle("Show macOS Group", isOn: $showMacOS)
             Divider()  // what counts as a leftover, and what happens to them
             Toggle("Count Orphans as Leftovers", isOn: $countOrphans)
-            Menu("Ignored Apps") {
+            Menu("Never Flagged") {  // orphans too, and they are not apps
                 if ignored.isEmpty { Text("None") }
                 // Checked = ignored; choosing one takes it off the list.
                 ForEach(ignored, id: \.self) { name in

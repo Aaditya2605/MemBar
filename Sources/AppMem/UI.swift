@@ -161,11 +161,12 @@ struct Panel: View {
             }
             .font(.caption).padding(.horizontal, 10).padding(.vertical, 4)
             Divider()
+            let s = shown, typed = query.trimmingCharacters(in: .whitespaces)  // shown sorts: once per render
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+                    let q = typed.lowercased()
                     let d = model.mark.map { delta(mark: $0, groups: model.groups) }
-                    ForEach(shown) { g in
+                    ForEach(s) { g in
                         Row(g: g, only: hits(g, q), points: model.history.points(g.id), change: d.flatMap { changeLabel(g, $0) }, nav: nav) {
                             model.stopGroups([g])
                         }
@@ -177,6 +178,7 @@ struct Panel: View {
             .onKeyPress(action: listKey)
             .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
             .scrolls(to: nav.sel)
+            .overlay { if s.isEmpty && !typed.isEmpty { ContentUnavailableView.search(text: typed) } }  // else no match looks like loading
             let small = query.trimmingCharacters(in: .whitespaces).isEmpty ? listed.small : []
             if !small.isEmpty {
                 Divider()
@@ -196,6 +198,11 @@ struct Panel: View {
         .onReceive(NotificationCenter.default.publisher(for: NSPopover.didShowNotification)) { n in
             if n.object as? NSPopover === (NSApp.delegate as? Delegate)?.popover { focus = .list }
         }
+        // Each open starts unfiltered: else a notification opens a list that hides its leftover, and typing
+        // adds to the old text. On close, not on show: didShow comes after the animation shows the old list.
+        .onReceive(NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)) { n in
+            if n.object as? NSPopover === (NSApp.delegate as? Delegate)?.popover { query = "" }
+        }
     }
 
     func column(_ title: String, _ s: Sort) -> some View {
@@ -204,6 +211,7 @@ struct Panel: View {
         }
         .buttonStyle(.plain)
         .help("Sort by \(title.lowercased())")
+        .accessibilityAddTraits(sort == s ? .isSelected : [])
     }
 }
 
@@ -250,10 +258,11 @@ struct Row: View {
         let quitIdle = idleRule(g.name).flatMap { m in
             g.leftover || g.ignored || Actions.runningApp(g) == nil ? nil : "Quits when not used for \(hours(m))"
         }
+        // A double-click opens Details; its second toggle undoes the first.
+        let open = { nav.click(RowID(group: g.id)); nav.toggle(g.id); if isDoubleClick() { Details.show(g) } }
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                // A double-click opens Details; its second toggle undoes the first.
-                Button { nav.click(RowID(group: g.id)); nav.toggle(g.id); if isDoubleClick() { Details.show(g) } } label: {
+                Button(action: open) {
                     HStack(spacing: 6) {
                         Image(systemName: expanded || only != nil ? "chevron.down" : "chevron.right")
                             .font(.caption2).frame(width: 10)
@@ -284,14 +293,11 @@ struct Row: View {
                         LimitBell(g: g)
                         // Next to a paused badge only the icon: the name keeps its room. None on a
                         // leftover or orphan: with the badge and Stop, even the icon cuts the name that Stop is for.
-                        // One port with a change since the mark: else the change seldom has room.
-                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil && quitIdle == nil && change == nil ? 2 : 1) }
+                        // With a change since the mark only the icon: else the change seldom has room.
+                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused || change != nil ? 0 : growing == nil && quitIdle == nil ? 2 : 1) }
+                        // ponytail: on a leftover or orphan row Stop sits between the change and "Procs", so the
+                        // change is a Stop width left of its header; a fixed Stop slot would take it from every name.
                         Spacer(minLength: 4).overlay(alignment: .trailing) { ChangeText(label: change, procs: g.procs.count) }
-                        // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
-                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
-                        Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
-                        Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
                     }
                     .contentShape(Rectangle())
                 }
@@ -306,7 +312,22 @@ struct Row: View {
                         .controlSize(.small)
                         .disabled(!canStop(g))
                         .help(others)
+                        .accessibilityLabel("Stop \(g.name)")
                 }
+                // After Stop, as in DeviceLine: the numbers line up with the header and the process lines.
+                // The row's label already reads them to VoiceOver.
+                Button(action: open) {
+                    HStack(spacing: 6) {
+                        // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
+                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
+                        Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            .frame(width: 40, alignment: .trailing)
+                        Text(fmt(g.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
             }
             .contextMenu { GroupMenu(g: g) }
             .highlight(picked)

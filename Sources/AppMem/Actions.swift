@@ -134,11 +134,12 @@ struct GroupMenu: View {
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
         Divider()  // what AppMem tells about this app
         LimitMenu(g: g)  // Alerts.swift
-        // Settings > Ignored Apps lists the same names; Model rescans when the list changes.
+        // Settings > Never Flagged lists the same names; Model rescans when the list changes.
         let ignored = UserDefaults.standard.ignored.contains(g.name)
         // The groups that can be leftovers, and an ignored one: an orphan's badge goes with the ignore, its undo stays.
         if g.isApp || g.isSimulator || g.orphan || ignored {
-            Button(ignored ? "Flag as Leftover Again" : "Never Flag as Leftover") {
+            // An ignored group has no flag left to name, so the undo says neither.
+            Button(ignored ? "Flag Again" : g.orphan ? "Never Flag as Orphan" : "Never Flag as Leftover") {
                 let rest = UserDefaults.standard.ignored.filter { $0 != g.name }
                 UserDefaults.standard.set(rest + (ignored ? [] : [g.name]), forKey: "ignored")
             }
