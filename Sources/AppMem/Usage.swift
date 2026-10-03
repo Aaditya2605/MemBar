@@ -20,10 +20,10 @@ func idleTime(_ g: Group, lastFront: Date?, now: Date) -> TimeInterval? {
     return t >= 2 * 3600 ? t : nil
 }
 
-/// How long leftover `g` has run: its oldest process; for the simulator, its first booted
+/// How long leftover or orphan `g` has run: its oldest process; for the simulator, its first booted
 /// device, as its group also holds CoreSimulator daemons that run for weeks.
 func leftoverAge(_ g: Group, started: (pid_t) -> Date?, now: Date) -> TimeInterval? {
-    guard g.leftover else { return nil }
+    guard g.leftover || g.orphan else { return nil }
     let procs = g.isSimulator ? g.procs.filter { $0.name == "launchd_sim" } : g.procs
     return procs.compactMap { started($0.pid) }.min().map { now.timeIntervalSince($0) }
 }
@@ -86,7 +86,7 @@ enum Usage {
         return idleTime(g, lastFront: last, now: Date())
     }
 
-    /// Only for leftovers: a sysctl each.
+    /// Only for leftovers and orphans: a sysctl each.
     static func age(_ g: Group) -> TimeInterval? { leftoverAge(g, started: started, now: Date()) }
 
     /// "for 2 d" after a leftover, "idle 3 h" after an idle app, and the help for it.

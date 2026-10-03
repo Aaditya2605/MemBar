@@ -23,6 +23,7 @@ struct Group: Identifiable {
     var bundle: String?  // the app's .app folder, for its icon
     var ignored = false  // a leftover that ignoring() unflagged: its app is still not open
     var respawns: String?  // it came back after Stop: why (see Recall)
+    var orphan = false  // its processes were left by a terminal or agent that is gone (see Orphans)
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -252,10 +253,10 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
 // Same PID and same executable as in the scan, so a reused PID is left alone.
 func same(_ p: Proc) -> Bool { shortInfo(p.pid).map { path(of: p.pid, comm: comm($0)) == p.path } ?? false }
 
-/// App leftover: SIGTERM, then SIGKILL after 3 s for the ones that still run.
+/// App leftover or orphan: SIGTERM, then SIGKILL after 3 s for the ones that still run.
 /// Simulator: shut down the booted devices. Never the macOS group, never other users.
 func stop(_ g: Group) {
-    guard g.leftover, g.name != "macOS" else { return }
+    guard g.leftover || g.orphan, g.name != "macOS" else { return }
     if g.isSimulator {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -474,5 +475,6 @@ func selfTest() {
     back[0].respawns = "x"  // Cursor came back after Stop: the respawn icon is a badge too
     precondition(ignoring(back, ["Cursor"])[0].respawns == nil && ignoring(back, [])[0].respawns == "x")
     recallTest()
+    orphanTest()
     print("ok")
 }

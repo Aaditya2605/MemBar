@@ -16,13 +16,15 @@ final class Model: ObservableObject {
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
     private var ports: [pid_t: [UInt16]] = [:], portsAt = Date.distantPast  // queue only
     private var recall = Recall()  // queue only
+    private var orphans = Orphans()  // queue only
     private var watches: [NSKeyValueObservation] = []
 
     init() {
         // Settings apply at once, also an ignore list that the right-click menu writes.
         // Main queue: KVO reports on the writer's thread, and the timer needs the main run loop.
         watches = [UserDefaults.standard.observe(\.ignored) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } },
-                   UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } }]
+                   UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } },
+                   UserDefaults.standard.observe(\.countOrphans) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } }]
     }
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
@@ -49,7 +51,8 @@ final class Model: ObservableObject {
             if open { addPorts(&procs, ports) }
             addCPU(&procs, prev: prevCPU, seconds: -prevAt.timeIntervalSinceNow)
             prevCPU = procs.mapValues(\.cpuTime); prevAt = Date()
-            let g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
+            var g = ignoring(recall.groups(procs, responsible: responsible), UserDefaults.standard.ignored), s = systemMem()
+            g = orphans.mark(g, procs, open: open)
             DispatchQueue.main.async { self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate() }
         }
     }
@@ -207,7 +210,9 @@ struct Row: View {
                             .font(.caption2).frame(width: 10)
                         icon.frame(width: 16, height: 16)
                         Text(g.name).lineLimit(1).truncationMode(.middle)
-                        if g.leftover {
+                        if g.orphan {  // orange only when counted as a leftover (Settings)
+                            Text("orphan").font(.caption2.bold()).foregroundStyle(g.leftover ? .orange : .secondary).help(orphanHelp)
+                        } else if g.leftover {
                             Text("leftover").font(.caption2.bold()).foregroundStyle(.orange)
                                 .help(g.isSimulator ? "A device is booted and Simulator is not open" : "\(g.name) is not open")
                         }
@@ -225,8 +230,8 @@ struct Row: View {
                                 .help("Memory is growing: \(growing)")
                         }
                         // Next to a paused badge only the icon: the name keeps its room. None on a
-                        // leftover: with the badge and Stop, even the icon cuts the name that Stop is for.
-                        if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
+                        // leftover or orphan: with the badge and Stop, even the icon cuts the name that Stop is for.
+                        if !g.ports.isEmpty && !g.leftover && !g.orphan { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
                         Spacer(minLength: 4)
                         // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
                         Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).help(others)
@@ -237,10 +242,10 @@ struct Row: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, others.isEmpty ? nil : others]
+                .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.orphan ? ", orphan" : g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
+                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
-                if g.leftover {
+                if g.leftover || g.orphan {
                     Button("Stop", action: stop)
                         .controlSize(.small)
                         .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
@@ -355,6 +360,8 @@ func snapshot(to path: String, query: String) {
     addCPU(&procs, prev: prev, seconds: 1)
     addPorts(&procs, listenPorts(procs))
     model.groups = ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
+    var orphans = Orphans()
+    model.groups = orphans.mark(model.groups, procs, open: true)
     model.sys = systemMem()
     if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
     let view = NSHostingView(rootView: Panel(model: model, query: query))
