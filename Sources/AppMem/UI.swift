@@ -224,6 +224,7 @@ struct Row: View {
                             Image(systemName: "arrow.up.right").font(.caption2.bold()).foregroundStyle(.red)
                                 .help("Memory is growing: \(growing)")
                         }
+                        LimitBell(g: g)
                         // Next to a paused badge only the icon: the name keeps its room. None on a
                         // leftover: with the badge and Stop, even the icon cuts the name that Stop is for.
                         if !g.ports.isEmpty && !g.leftover { PortChip(ports: g.ports, network: true, limit: paused ? 0 : growing == nil ? 2 : 1) }
@@ -238,7 +239,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, others.isEmpty ? nil : others]
+                .accessibilityValue([paused ? "Paused" : nil, g.respawns, Usage.note(g)?.help, limitHelp(g), others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 if g.leftover {
                     Button("Stop", action: stop)
@@ -273,6 +274,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let popover = NSPopover()
     let model = Model()
+    let alerts = Alerts()
     // The kernel calls when the pressure level changes: the dot need not wait for the 60 s scan.
     let pressureEvents = DispatchSource.makeMemoryPressureSource(eventMask: .all, queue: .main)
 
@@ -284,7 +286,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: Panel(model: model))
-        model.onUpdate = { [weak self] in self?.updateIcon() }
+        model.onUpdate = { [weak self] in self?.updateIcon(); self?.alerts.check() }
+        alerts.start(model) { [weak self] in if self?.popover.isShown == false { self?.toggle() } }  // a notification click
         Usage.start()
         model.schedule()
         model.refresh()

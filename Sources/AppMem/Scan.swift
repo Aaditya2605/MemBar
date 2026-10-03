@@ -474,5 +474,6 @@ func selfTest() {
     back[0].respawns = "x"  // Cursor came back after Stop: the respawn icon is a badge too
     precondition(ignoring(back, ["Cursor"])[0].respawns == nil && ignoring(back, [])[0].respawns == "x")
     recallTest()
+    alertsTest()
     print("ok")
 }

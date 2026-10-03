@@ -55,6 +55,7 @@ struct SettingsMenu: View {
             Picker("Refresh Every", selection: $refreshEvery) {
                 ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
             }
+            AlertsMenu()  // Alerts.swift
             Divider()
             Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
             Toggle("Show macOS Group", isOn: $showMacOS)

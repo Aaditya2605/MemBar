@@ -124,6 +124,7 @@ struct GroupMenu: View {
         Divider()
         Button("Reveal in Finder") { file.map(Actions.reveal) }.disabled(file == nil)
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
+        LimitMenu(g: g)  // Alerts.swift
         if g.isApp || g.isSimulator {  // the groups that can be leftovers
             // Settings > Ignored Apps lists the same names; Model rescans when the list changes.
             let ignored = UserDefaults.standard.ignored.contains(g.name)
