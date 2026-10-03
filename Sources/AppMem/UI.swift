@@ -70,6 +70,7 @@ final class Model: ObservableObject {
                 self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
+                Rules.check(g)  // Restart When Above, Pause When in Background
             }
         }
     }
@@ -301,6 +302,7 @@ struct Row: View {
                         UsageBadge(g: g)
                         if let growing { Image(systemName: "arrow.up.right").flag(.red).help("Memory is growing: \(growing)") }
                         LimitBell(g: g)
+                        RuleBadges(g: g)  // Rules.swift
                         // Only where a port tells what the group is (a dev server, a leftover's or orphan's
                         // socket); an app's own ports are noise here, and stay in its lines, the search and VoiceOver.
                         // Gone before the name truncates: all ports, one, the icon, then nothing. After the
@@ -323,7 +325,7 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.orphan ? ", orphan" : g.leftover ? ", leftover" : "")\(growing.map { ", growing \($0)" } ?? "")\(portsLabel(g.ports))")
-                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, limitHelp(g), change?.help, others.isEmpty ? nil : others]
+                .accessibilityValue([paused ? "Paused" : nil, g.orphan ? orphanHelp : nil, g.respawns, Usage.note(g)?.help, quitIdle, Rules.help(g), limitHelp(g), change?.help, others.isEmpty ? nil : others]
                     .compactMap { $0 }.joined(separator: ". "))
                 .accessibilityAction(named: "Show Details") { Details.show(g) }
                 .accessibilityAddTraits(picked ? .isSelected : [])
@@ -424,6 +426,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.onUpdate = { [weak self] in self?.updateIcon(); self?.alerts.check() }
         alerts.start(model) { [weak self] in self?.openPanel() }  // a notification click; MenuBar.swift
         Usage.start()
+        Rules.start()  // resumes the apps it paused on a switch to them and at quit
         model.schedule()
         model.refresh()
         pressureEvents.setEventHandler { [weak self] in self?.model.refresh() }
