@@ -17,10 +17,12 @@ enum Drive {
         // An .app reads the installed app's settings (same bundle id); the bare binary has its own.
         guard Bundle.main.bundleIdentifier == nil else { fail("run the bare binary .build/debug/AppMem, not an .app") }
         let d = UserDefaults.standard, domain = ProcessInfo.processInfo.processName
-        // They act in each scan: a test run must not stop or quit the apps of this Mac.
-        guard autoStopAfter(d.integer(forKey: "autoStop")) == nil, d.quitIdle.isEmpty else {
-            fail("Auto-Stop or Quit When Idle is on in the \(domain) defaults: turn them off first")
+        // They act in each scan: a test run must not stop, quit, restart or pause the apps of this Mac.
+        guard autoStopAfter(d.integer(forKey: "autoStop")) == nil, d.quitIdle.isEmpty, d.restartAbove.isEmpty,
+              !d.pauseInBackground.values.contains(true) else {
+            fail("Auto-Stop, Quit When Idle, Restart When Above or Pause When in Background is on in the \(domain) defaults: turn them off first")
         }
+        HistoryFile.readOnly = true  // its path has no bundle id: it is the installed app's file
         dir = out
         try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
         setvbuf(stdout, nil, _IOLBF, 0)  // in order with AppKit's warnings on stderr
@@ -110,9 +112,9 @@ enum Drive {
     @MainActor static func details(_ d: Delegate) async {
         d.item.button?.performClick(nil)
         _ = await until(3) { d.popover.isShown }
-        await pause(0.5)
         let pw = d.popover.contentViewController?.view.window
-        check(d.popover.isShown && search(pw) == "" && !editing(pw), "open again: no search, the focus on the list: \(responder(pw))")
+        // didShow moves the focus to the list after the show animation, about 0.5 s after isShown: a fixed 0.5 s failed 1 run in 8.
+        check(await until(2) { search(pw) == "" && !editing(pw) } && d.popover.isShown, "open again: no search, the focus on the list: \(responder(pw))")
         if let pw {  // a letter on the list starts a search with it; the next one adds to it
             for (c, code) in [("s", 1), ("p", 35)] as [(String, UInt16)] { await press(Key(chars: c, code: code), pw) }
             check(search(pw) == "sp" && editing(pw), "typing on the list searches: \"\(search(pw) ?? "no field")\"")

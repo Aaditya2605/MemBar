@@ -107,6 +107,9 @@ enum HistoryFile {
     private static let queue = DispatchQueue(label: "appmem.history", qos: .background)
     private static var latest: History?  // the last scan's: what the save at quit writes
     private static var savedAt = Date()  // set at the first scan: the first write comes 5 min after it
+    #if DEBUG
+    static var readOnly = false  // --drive (Drive.swift): it reads the file, and leaves it as it was
+    #endif
 
     /// The Model's history at launch, so the chart has data at once. Also sets up the save at quit,
     /// of the last scan's history: so never in --snapshot, which does not scan.
@@ -119,6 +122,9 @@ enum HistoryFile {
 
     /// After each scan: a write at most every 5 min, encoded and written off the main thread.
     static func save(_ h: History) {
+        #if DEBUG
+        if readOnly { return }  // no latest either: no write at quit
+        #endif
         latest = h
         guard -savedAt.timeIntervalSinceNow >= 300 else { return }
         savedAt = Date()
