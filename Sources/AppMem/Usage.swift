@@ -39,7 +39,7 @@ func started(_ pid: pid_t) -> Date? {
 
 /// When each app was last frontmost, by group name. One workspace observer, no polling.
 /// ponytail: frontmost is the only sign of use, so music that plays in the background
-/// reads as idle; the badge only suggests a quit, it never acts.
+/// reads as idle; the badge only suggests a quit. Only a Quit When Idle rule, set by hand, acts.
 enum Usage {
     private static let key = "lastFront"
     // ponytail: never pruned; one entry per app ever used, a few hundred at most.
@@ -81,10 +81,10 @@ enum Usage {
         }
     }
 
-    static func idle(_ g: Group) -> TimeInterval? {
-        let last = g.name == front ? Date() : seen[g.name].map(Date.init(timeIntervalSince1970:))
-        return idleTime(g, lastFront: last, now: Date())
-    }
+    /// When app `name` was last frontmost: now while it is, nil when never seen.
+    static func lastFront(_ name: String) -> Date? { name == front ? Date() : seen[name].map(Date.init(timeIntervalSince1970:)) }
+
+    static func idle(_ g: Group) -> TimeInterval? { idleTime(g, lastFront: lastFront(g.name), now: Date()) }
 
     /// Only for leftovers: a sysctl each.
     static func age(_ g: Group) -> TimeInterval? { leftoverAge(g, started: started, now: Date()) }

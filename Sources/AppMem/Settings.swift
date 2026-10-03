@@ -48,6 +48,7 @@ struct SettingsMenu: View {
     // from the last body, so a Binding that reads them live would show old values.
     @State private var login = false
     @State private var ignored: [String] = []
+    @State private var recent: [Freed.Entry] = []  // Stop and the auto rules write the log
 
     var body: some View {
         Menu {
@@ -67,6 +68,7 @@ struct SettingsMenu: View {
                     }))
                 }
             }
+            AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
             Divider()
             Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
             Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
@@ -79,6 +81,7 @@ struct SettingsMenu: View {
         .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
             login = SMAppService.mainApp.status == .enabled
             ignored = UserDefaults.standard.ignored
+            recent = Freed.log
         }
         // SwiftUI fills the menu only when it first opens, so until then its ⌘Q
         // does nothing. A hidden button still takes the shortcut.

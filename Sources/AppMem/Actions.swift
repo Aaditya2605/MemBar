@@ -116,6 +116,7 @@ struct GroupMenu: View {
         Button("Force Quit \(g.name)…") { if Actions.confirmForceQuit(g.name) { Actions.quit(g, app, force: true) } }
             .disabled(!a.quit)
         if let app, a.restart { Button("Restart \(g.name)") { Actions.restart(g, app) } }
+        if a.restart && !g.leftover { QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app
         Divider()
         if a.resume { Button("Resume") { Actions.send(SIGCONT, g.procs.filter(\.stopped), in: g) } }
         if a.pause || !a.resume {
@@ -158,5 +159,5 @@ struct ProcMenu: View {
 
 extension Model {
     /// The header's Stop All: Stop for each leftover, with Stop's own checks.
-    func stopAll() { stopGroups(groups.filter(\.leftover)) }
+    func stopAll() { stopGroups(groups.filter(\.leftover), how: "Stop All") }
 }
