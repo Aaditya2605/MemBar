@@ -436,6 +436,52 @@ func selfTest() {
         precondition(summaryText(pg["Cursor"]!).hasSuffix("PID 10  node\n  300 MB  CPU –  PID 11  node  :3000"))
     }
 
+    do {  // MenuBar.swift: the text next to the icon, the quick menu's info line, Copy Report, appmem:// URLs
+        let gb: Int64 = 1 << 30, fs = "\u{2007}"  // figure space: as wide as a digit
+        precondition(short(850 << 20) == "850 MB" && short(999 << 20) == "999 MB" && short(1000 << 20) == "1.0 GB" && short(16 * gb) == "16.0 GB")
+        precondition(padDigits("3.2 GB", 3) == fs + "3.2 GB" && padDigits("50 MB", 3) == fs + "50 MB" && padDigits("100%", 2) == "100%")
+        var s = SysMem(level: 2, free: 47)
+        s.app = 11 * gb + (100 << 20)
+        precondition(menuBarText(.icon, sys: s, waste: gb) == "" && menuBarText(.leftovers, sys: s, waste: 0) == "")
+        precondition(menuBarText(.leftovers, sys: s, waste: 850 << 20) == "850 MB" && menuBarText(.ram, sys: s, waste: 0) == "11.1 GB")
+        precondition(menuBarText(.pressure, sys: s, waste: 0) == "53%" && menuBarText(.pressure, sys: SysMem(free: 95), waste: 0) == fs + "5%")
+        // Same width from scan to scan: as many characters for 9.8 GB as for 19.8 GB.
+        precondition(menuBarText(.leftovers, sys: s, waste: gb * 98 / 10).count == menuBarText(.leftovers, sys: s, waste: gb * 198 / 10).count)
+        precondition(infoLine(s, physical: 16 * gb) == "RAM 11.1 GB of 16 GB · Pressure 53%")
+        var rg = groups
+        rg[0].respawns = "x"  // Cursor
+        rg.append(Group(name: "A|B", isApp: false, procs: [Proc(pid: 70, ppid: 1, uid: getuid(), path: "/t", mem: 5 << 20, stopped: true)]))
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 3, hour: 14, minute: 5))!
+        precondition(report(groups: rg, sys: s, date: date, physical: 16 * gb, flags: { $0.name == "Claude" ? ["idle"] : [] }) == """
+            ## AppMem report, 2026-10-03 14:05
+
+            - RAM used: 11.10 GB of 16 GB
+            - Swap: 0 MB
+            - Memory pressure: Warning, 53%
+            - Leftovers: 850 MB (Cursor 800 MB, iOS Simulator 50 MB)
+
+            | App | Memory | CPU | Processes | Flags |
+            |:--|--:|--:|--:|:--|
+            | Claude | 1.27 GB | – | 2 | idle |
+            | Cursor | 800 MB | – | 2 | leftover, respawns |
+            | iOS Simulator | 50 MB | – | 1 | leftover |
+            | WhatsApp | 42 MB | – | 2 |  |
+            | Weather | 30 MB | – | 1 |  |
+            | macOS | 10 MB | – | 1 |  |
+            | A\\|B | 5 MB | – | 1 | paused |
+            """)
+        let many = (0..<20).map { Group(name: "G\($0)", isApp: false, procs: [Proc(pid: pid_t(100 + $0), ppid: 1, uid: 501, path: "/g", mem: 1 << 20)]) }
+        let r = report(groups: many, sys: s, date: date)
+        precondition(r.split(separator: "\n").filter { $0.hasPrefix("| G") }.count == 15 && r.hasSuffix("\n\n_5 more groups: 5 MB_"))
+        precondition(report(groups: [], sys: s, date: date).contains("\n- Leftovers: none\n"))
+        // No URL stops anything: any web page can open one.
+        precondition(urlCommand("appmem://open") == .open && urlCommand("appmem://open/") == .open && urlCommand("appmem:open") == .open)
+        precondition(urlCommand("AppMem://Report") == .report && urlCommand("appmem://refresh?x=1") == .refresh)
+        precondition(urlCommand("appmem://stop") == nil && urlCommand("appmem://open/stop") == nil && urlCommand("https://open") == nil && urlCommand("appmem://") == nil)
+        // In an extension: AppKit calls it only if Objective-C sees it, else no URL works.
+        precondition(Delegate.instancesRespond(to: NSSelectorFromString("applicationWillFinishLaunching:")))
+    }
+
     // Process tree: nesting, memory order among siblings, orphans are roots, loops end.
     func t(_ ps: [(pid_t, Proc)]) -> [String] { tree(ps.map(\.1)).map { "\($0.proc.pid):\($0.depth)" } }
     precondition(t([p(5, 1, "/r", 50), p(9, 99, "/orphan", 45), p(7, 5, "/big", 40), p(8, 7, "/grand", 30), p(6, 5, "/small", 10)])

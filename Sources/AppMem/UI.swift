@@ -291,7 +291,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = item.button else { return }
         button.image = Self.chip
         button.target = self
-        button.action = #selector(toggle)
+        button.action = #selector(clicked)  // MenuBar.swift: a right click opens the quick menu
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: Panel(model: model))
@@ -303,9 +304,9 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         pressureEvents.resume()
     }
 
-    // No size text in the menu bar: it read as the total RAM use. A yellow dot
-    // means "leftovers found", orange or red memory pressure (see menuState); the
-    // tooltip and the panel give the size.
+    // No size text in the menu bar by default (Settings > Menu Bar Shows): it read as the
+    // total RAM use. A yellow dot means "leftovers found", orange or red memory pressure
+    // (see menuState); the tooltip and the panel give the size.
     static let chip: NSImage = {
         let i = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "AppMem")!
         i.isTemplate = true
@@ -339,6 +340,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             item.button?.image = s.dot.map { Self.dotIcon($0, s.desc) } ?? Self.chip
         }
         item.button?.toolTip = s.tip
+        updateTitle()  // MenuBar.swift
     }
 
     @objc func toggle() {
