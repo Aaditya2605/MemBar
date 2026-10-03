@@ -25,6 +25,7 @@ struct Group: Identifiable {
     var ignored = false  // a leftover that ignoring() unflagged: its app is still not open
     var respawns: String?  // it came back after Stop: why (see Recall)
     var orphan = false  // its processes were left by a terminal or agent that is gone (see Orphans)
+    var recalled = false  // holds a command-line process that only Recall's memory puts in this app's group
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -114,6 +115,7 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         let (name, isApp) = appOf(topPath), key = "\(name)|\(isApp)"
         groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
         if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
+        if owners[top]?.app == topPath { groups[key]!.recalled = true }
         if !topPath.contains(".appex/") { notExtension.insert(key) }
     }
     return groups.values.map { g in
@@ -595,20 +597,29 @@ func selfTest() {
         let c2 = leftoverClock(again, since: c1, now: t0 + 20 * m)
         precondition(c2["Cursor|true"] == nil && leftoverClock(groups, since: c2, now: t0 + 21 * m)["Cursor|true"] == t0 + 21 * m)
         precondition(stoppable(byName["iOS Simulator"]!, uid: 7) && stoppable(byName["Cursor"]!, uid: 501) && !stoppable(byName["Cursor"]!, uid: 502))
+        // A server from VS Code's terminal (nohup), kept in its group by Recall after VS Code quit: by hand only.
+        let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", node = "/opt/homebrew/bin/node"
+        let kept = group(Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(61, 1, node, 300), p(62, 61, "/opt/homebrew/bin/esbuild", 20)]),
+                         responsible: { $0 }, owners: [61: AppOwner(app: code, exe: node, uid: 501)]).first { $0.name == "Visual Studio Code" }!
+        precondition(kept.leftover && kept.recalled && kept.procs.count == 2 && stops([kept], [kept.id: t0], at: h).isEmpty)
+        precondition(!byName["Cursor"]!.recalled)  // its own Application Support folder: no memory needed
 
         // Quit When Idle: Claude is open (1300 MB); Cursor is a leftover; 5 min is no menu choice.
         let rules = ["Claude": 60, "Cursor": 60, "WhatsApp": 5, "macOS": 60]
         let last: [String: Date] = ["Claude": t0 - 2 * h, "Cursor": t0 - 2 * h, "WhatsApp": t0 - 9 * h, "macOS": t0 - 9 * h]
-        func quits(_ gs: [Group], front: String? = nil, tried: [String: Date] = [:], at: Date = t0) -> [String] {
-            idleQuits(gs, rules: rules, lastFront: { last[$0] }, frontmost: front, tried: tried, now: at).map(\.name)
+        func quits(_ gs: [Group], front: String? = nil, tried: [String: Date] = [:], ruled: [String: Date] = [:], at: Date = t0) -> [String] {
+            idleQuits(gs, rules: rules, ruled: ruled, lastFront: { last[$0] }, frontmost: front, tried: tried, now: at).map(\.name)
         }
         precondition(quits(groups) == ["Claude"] && quits(groups, at: t0 - h - 1).isEmpty)  // idle 2 h; 59:59
         precondition(quits(groups, front: "Claude").isEmpty)  // frontmost
-        precondition(idleQuits(groups, rules: rules, lastFront: { _ in nil }, frontmost: nil, tried: [:], now: t0).isEmpty)  // unknown
+        precondition(idleQuits(groups, rules: rules, ruled: [:], lastFront: { _ in nil }, frontmost: nil, tried: [:], now: t0).isEmpty)  // unknown
         precondition(quits(groups, tried: ["Claude": t0 - 2 * h]).isEmpty && quits(groups, tried: ["Claude": t0 - 5 * h]) == ["Claude"])  // one ask per idle stretch
         var pausedClaude = claude
         pausedClaude.procs[0].stopped = true  // it cannot answer the quit
         precondition(quits([pausedClaude]).isEmpty && quits(ignoring([claude], ["Claude"])) == ["Claude"])
+        // A rule set on an app idle for 2 h counts from when it was set: never a quit at once.
+        precondition(quits(groups, ruled: ["Claude": t0 - h + 1]).isEmpty && quits(groups, ruled: ["Claude": t0 - h]) == ["Claude"])
+        precondition(quits(groups, tried: ["Claude": t0 - 2 * h], ruled: ["Claude": t0 - h]).isEmpty)  // still one ask per stretch
         precondition(idleRule("Claude", rules) == 60 && idleRule("WhatsApp", rules) == nil && idleRule("Nope", rules) == nil)
         precondition(hours(60) == "1 hour" && hours(240) == "4 hours" && hours(120).capitalized == "2 Hours")
 

@@ -218,7 +218,10 @@ struct Row: View {
 
     var body: some View {
         let growing = growthText(points), paused = isPaused(g), others = othersHelp(g)
-        let quitIdle = g.leftover ? nil : idleRule(g.name).map { "Quits when not used for \(hours($0))" }
+        // Only where the right-click menu shows the rule and idleQuits acts: an open app at the group's .app.
+        let quitIdle = idleRule(g.name).flatMap { m in
+            g.leftover || g.ignored || Actions.runningApp(g) == nil ? nil : "Quits when not used for \(hours(m))"
+        }
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 // A double-click opens Details; its second toggle undoes the first.

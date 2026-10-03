@@ -27,8 +27,9 @@ func hours(_ minutes: Int) -> String { "\(minutes / 60) hour\(minutes == 60 ? ""
 func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.isSimulator || g.procs.contains { $0.uid == uid } }
 
 /// When each leftover was first seen as one, by group id: AppMem's own clock, not process
-/// age, so a fresh launch never stops at once. A group that is not a leftover in this scan
-/// (it exited, its app opened, it is ignored) drops out, so its clock starts again.
+/// age, kept only while auto-stop is on (Auto.check), so a fresh launch or auto-stop turned
+/// on never stops at once. A group that is not a leftover in this scan (it exited, its app
+/// opened, it is ignored) drops out, so its clock starts again.
 func leftoverClock(_ groups: [Group], since: [String: Date], now: Date) -> [String: Date] {
     Dictionary(uniqueKeysWithValues: groups.filter(\.leftover).map { ($0.id, since[$0.id] ?? now) })
 }
@@ -38,29 +39,34 @@ func leftoverClock(_ groups: [Group], since: [String: Date], now: Date) -> [Stri
 /// Simulator and the Android emulator, as both can be in use with no Simulator or Android
 /// Studio window (an agent's device, an emulator run from VS Code). Never an orphan, also
 /// when Settings counts it as a leftover: no app tells it is waste, and a server kept on
-/// purpose looks the same. Stop by hand still can.
+/// purpose looks the same. Never a group that Recall keeps a command-line job in: a server
+/// started in the app's terminal and kept after the app quit (nohup, pg_ctl, pm2) looks
+/// the same too. Stop by hand still can.
+/// ponytail: an AI app's MCP servers that outlive it wait for Stop too.
 func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, simulator: Bool, now: Date,
                uid: uid_t = getuid()) -> [Group] {
     guard let after else { return [] }
     return groups.filter { g in
-        g.leftover && !g.orphan && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
+        g.leftover && !g.orphan && !g.recalled && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
             && since[g.id].map { now.timeIntervalSince($0) >= after } == true
     }
 }
 
-/// The open apps to quit now by their rule: not frontmost for that long. Never when Usage
-/// has no time for it (unknown is not idle), never the frontmost app, never one with a
-/// paused process (it cannot answer the quit). `tried`: name → the last-front time of a
-/// quit already asked: one ask per idle stretch, so an app whose user cancelled the quit
-/// (a save dialog) is not asked again each minute.
+/// The open apps to quit now by their rule: not frontmost for that long, counted from the
+/// rule's start at the latest (`ruled`: name → the first scan that saw the rule), so a rule
+/// set on an app idle for hours does not quit it at once. Never when Usage has no time for
+/// it (unknown is not idle), never the frontmost app, never one with a paused process (it
+/// cannot answer the quit). `tried`: name → the last-front time of a quit already asked:
+/// one ask per idle stretch, so an app whose user cancelled the quit (a save dialog) is not
+/// asked again each minute.
 /// ponytail: frontmost is the only sign of use (see Usage), so a player with a rule quits
 /// while it plays in the background; check CPU or audio if that bites.
-func idleQuits(_ groups: [Group], rules: [String: Int], lastFront: (String) -> Date?, frontmost: String?,
-               tried: [String: Date], now: Date) -> [Group] {
+func idleQuits(_ groups: [Group], rules: [String: Int], ruled: [String: Date], lastFront: (String) -> Date?,
+               frontmost: String?, tried: [String: Date], now: Date) -> [Group] {
     groups.filter { g in
         guard let m = idleRule(g.name, rules), !g.leftover, !g.ignored, g.name != "macOS", g.name != frontmost,
               !g.procs.contains(where: \.stopped), let last = lastFront(g.name), tried[g.name] != last else { return false }
-        return now.timeIntervalSince(last) >= TimeInterval(m * 60)
+        return now.timeIntervalSince(max(last, ruled[g.name] ?? last)) >= TimeInterval(m * 60)
     }
 }
 
@@ -99,14 +105,14 @@ enum Freed {
 /// The rules' memory between scans. Main thread only, like Usage.
 enum Auto {
     private static var since: [String: Date] = [:]  // leftover id → the first scan that saw it as one
+    private static var ruled: [String: Date] = [:]  // app name → the first scan that saw its rule
     private static var tried: [String: Date] = [:]  // app name → its last-front time when asked to quit
 
     /// Each scan, from Model.refresh.
     static func check(_ groups: [Group], _ model: Model, now: Date = Date()) {
-        let d = UserDefaults.standard
-        since = leftoverClock(groups, since: since, now: now)
-        let stops = autoStops(groups, since: since, after: autoStopAfter(d.integer(forKey: "autoStop")),
-                              simulator: d.bool(forKey: "autoStopSimulator"), now: now)
+        let d = UserDefaults.standard, after = autoStopAfter(d.integer(forKey: "autoStop"))
+        since = after == nil ? [:] : leftoverClock(groups, since: since, now: now)
+        let stops = autoStops(groups, since: since, after: after, simulator: d.bool(forKey: "autoStopSimulator"), now: now)
         if !stops.isEmpty {
             // Still a leftover after it (slow to exit): a full wait again, not a stop each scan.
             // ponytail: a respawn later than Recall's 60 s is not marked, so it is stopped once each wait.
@@ -114,12 +120,14 @@ enum Auto {
             model.stopGroups(stops, how: "Auto-stop")
         }
         let rules = d.quitIdle
+        ruled = Dictionary(uniqueKeysWithValues: rules.keys.map { ($0, ruled[$0] ?? now) })
         guard !rules.isEmpty else { return }
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
-        for g in idleQuits(groups, rules: rules, lastFront: Usage.lastFront, frontmost: front, tried: tried, now: now) {
+        for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried, now: now) {
             tried[g.name] = Usage.lastFront(g.name)
-            // Never forceTerminate: the app can ask to save, or cancel.
-            if Actions.runningApp(g)?.terminate() == true { Freed.record([g], how: "Idle quit") }
+            // Never forceTerminate: the app can ask to save, or cancel. So counted once it has quit.
+            // ponytail: one that quits later than 10 s (a save dialog answered later) is not counted.
+            if let app = Actions.runningApp(g), app.terminate() { Actions.whenQuit(app) { Freed.record([g], how: "Idle quit") } }
         }
     }
 }

@@ -73,15 +73,20 @@ enum Actions {
         _ = force ? app.forceTerminate() : app.terminate()
     }
 
-    /// Quit, wait off the main thread until it has exited, then open it again. Not opened
-    /// if it still runs after 10 s: the user may have cancelled the quit.
+    /// Quit, then open it again once it has exited.
     static func restart(_ g: Group, _ app: NSRunningApplication) {
         guard let url = app.bundleURL else { return }
         quit(g, app)
+        whenQuit(app) { NSWorkspace.shared.openApplication(at: url, configuration: .init()) }
+    }
+
+    /// `then` on the main thread once `app` has exited, waited for off the main thread. Never
+    /// if it still runs after 10 s: the user may have cancelled the quit.
+    static func whenQuit(_ app: NSRunningApplication, then: @escaping () -> Void) {
         DispatchQueue.global().async {
             let end = Date() + 10
             while !app.isTerminated, Date() < end { Thread.sleep(forTimeInterval: 0.2) }
-            if app.isTerminated { DispatchQueue.main.async { NSWorkspace.shared.openApplication(at: url, configuration: .init()) } }
+            if app.isTerminated { DispatchQueue.main.async(execute: then) }
         }
     }
 
