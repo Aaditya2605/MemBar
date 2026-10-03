@@ -2,7 +2,8 @@ import Charts
 import SwiftUI
 
 // RAM history for the last hour: the header chart, the "growing" badge and the
-// sparkline of an expanded group. In memory only; it starts empty at each launch.
+// sparkline of an expanded group. Older samples fold into 24 h points; Day.swift saves
+// both to disk and loads them at launch.
 
 struct Sample {
     let at: Date
@@ -12,7 +13,10 @@ struct Sample {
 
 struct History {
     private(set) var samples: [Sample] = []
+    private(set) var older: [Sample] = []  // before the last hour, up to 24 h: one point each 5 min (fold)
     static let cap = 240  // 60 min at one sample each 15 s
+
+    init(samples: [Sample] = [], older: [Sample] = []) { self.samples = samples; self.older = older }  // Day.swift loads one
 
     /// One sample per scan, but at most one each 15 s: the open panel scans every 2-5 s.
     /// `allUsers`: the scan has fresh memory of other users' processes (top runs only with
@@ -24,8 +28,10 @@ struct History {
         let me = getuid(), big = groups.filter { $0.mem >= 50 << 20 && (allUsers || $0.procs.allSatisfy { $0.uid == me }) }
         samples.append(Sample(at: now, ram: sys.ram, swap: sys.swap,
                               groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
-        samples.removeAll { now.timeIntervalSince($0.at) > 3600 }
-        if samples.count > Self.cap { samples.removeFirst(samples.count - Self.cap) }
+        // Older than an hour, or past the cap: into the 24 h points. Oldest first: add only appends later times.
+        let old = max(samples.prefix { now.timeIntervalSince($0.at) > 3600 }.count, samples.count - Self.cap)
+        for s in samples.prefix(old) { fold(&older, s, now: now) }
+        samples.removeFirst(old)
     }
 
     /// One group's memory over time; it has no point when it was below 50 MB or not running.
@@ -76,7 +82,7 @@ struct RAMChart: View {
             let swap = samples.contains { $0.swap > 0 }
             let top = max(Int64(ProcessInfo.processInfo.physicalMemory), samples.map(\.swap).max() ?? 0)
             let ram = samples.map(\.ram)
-            let label = "RAM used in the last \(mins(b.at.timeIntervalSince(a.at))): lowest \(fmt(ram.min()!)), highest \(fmt(ram.max()!))"
+            let label = "RAM used in the last \(spanText(b.at.timeIntervalSince(a.at))): lowest \(fmt(ram.min()!)), highest \(fmt(ram.max()!))"
                 + (swap ? ". Swap: highest \(fmt(samples.map(\.swap).max()!))" : "")
             Chart(samples, id: \.at) { s in
                 AreaMark(x: .value("Time", s.at), y: .value("RAM", Double(s.ram)))
@@ -145,6 +151,11 @@ extension History {
             }
             h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15, ram: Int64(Double(sys.ram) * (0.9 + 0.1 * f + 0.02 * wave)),
                                     swap: Int64(Double(sys.swap) * f), groups: Dictionary(uniqueKeysWithValues: gs)))
+        }
+        for i in 0..<276 {  // the 23 h before, one point each 5 min: the 24 h chart
+            let wave = sin(Double(i) / 24)
+            h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300, ram: Int64(Double(sys.ram) * (0.8 + 0.1 * wave)),
+                                  swap: Int64(Double(sys.swap) * 0.5 * (1 + wave)), groups: [:]))
         }
         return h
     }

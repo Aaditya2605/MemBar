@@ -428,6 +428,7 @@ func selfTest() {
     precondition(pg["Cursor"]!.ports == [3000] && pg["Claude"]!.ports == [3000, 9229] && pg["macOS"]!.ports.isEmpty)
     precondition(matching(pg["Cursor"]!, ":3000").map(\.pid) == [11] && matching(pg["Claude"]!, "9229").map(\.pid) == [20])
     historySelfTest()
+    dayTest()  // Day.swift
 
     var vm = vm_statistics64()  // in pages of 16 KB
     vm.internal_page_count = 100; vm.purgeable_count = 10; vm.wire_count = 20; vm.compressor_page_count = 5; vm.external_page_count = 30
