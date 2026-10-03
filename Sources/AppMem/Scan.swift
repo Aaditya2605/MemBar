@@ -148,19 +148,25 @@ private let responsibleFn = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "resp
 
 func responsible(_ pid: pid_t) -> pid_t { responsibleFn?(pid) ?? -1 }
 
+/// KERN_PROCARGS2: argc, exec path, argv, environment (see argv(_:)). nil for
+/// other users' processes.
+func procArgs(_ pid: pid_t) -> [UInt8]? {
+    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+    var size = 0
+    guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return nil }
+    var args = [UInt8](repeating: 0, count: size)
+    guard sysctl(&mib, 3, &args, &size, nil, 0) == 0, size > 4 else { return nil }
+    return Array(args.prefix(size))
+}
+
 /// The executable path. proc_pidpath fails when the file was replaced (an app
 /// update); then argv's exec path, then the short process name.
 func path(of pid: pid_t, comm: String) -> String {
     var buf = [CChar](repeating: 0, count: 4096)  // PROC_PIDPATHINFO_MAXSIZE
     if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 { return String(cString: buf) }
-    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-    var size = 0
-    if sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 {
-        var args = [UInt8](repeating: 0, count: size)
-        if sysctl(&mib, 3, &args, &size, nil, 0) == 0, size > 4 {
-            let exe = args[4..<size].prefix { $0 != 0 }  // after int argc
-            if !exe.isEmpty { return String(decoding: exe, as: UTF8.self) }
-        }
+    if let args = procArgs(pid) {
+        let exe = args[4...].prefix { $0 != 0 }  // after int argc
+        if !exe.isEmpty { return String(decoding: exe, as: UTF8.self) }
     }
     return comm
 }
@@ -324,5 +330,18 @@ func selfTest() {
     cp[10]!.cpuTime = 3_000_000_000; cp[11]!.cpuTime = 1_000_000_000
     addCPU(&cp, prev: [10: 1_000_000_000, 11: 2_000_000_000], seconds: 4)
     precondition(cp[10]!.cpu == 50 && cp[11]!.cpu == 0 && cp[20]!.cpu == 0)  // 2 s in 4 s; 11 = reused PID
+
+    // Process tree: nesting, memory order among siblings, orphans are roots, loops end.
+    func t(_ ps: [(pid_t, Proc)]) -> [String] { tree(ps.map(\.1)).map { "\($0.proc.pid):\($0.depth)" } }
+    precondition(t([p(5, 1, "/r", 50), p(9, 99, "/orphan", 45), p(7, 5, "/big", 40), p(8, 7, "/grand", 30), p(6, 5, "/small", 10)])
+                 == ["5:0", "7:1", "8:2", "6:1", "9:0"])
+    precondition(t([p(3, 4, "/a", 2), p(4, 3, "/b", 1), p(0, 0, "kernel_task", 9)]) == ["0:0", "3:0", "4:1"])
+    let args = withUnsafeBytes(of: Int32(3)) { Array($0) } + Array("/bin/node\0\0\0node\0\0--port=1\0PATH=/x\0".utf8)
+    precondition(argv(args) == ["node", "", "--port=1"] && argv([1, 0]) == [] && argv(procArgs(getpid()) ?? []).contains("--test"))
+    precondition(commandLine("/bin/node", ["node", "a.js"]) == "/bin/node a.js" && commandLine("/x", []) == "/x")
+    precondition(commandLine("/x", ["x", String(repeating: "a", count: 500)]).count == 300)
+    let mixed = Group(name: "X", isApp: true, procs: [procs[10]!, Proc(pid: 2, ppid: 1, uid: 0, path: "/usr/sbin/d", mem: 1)])
+    precondition(othersHelp(mixed, uid: 501).hasPrefix("1 of 2 ") && othersHelp(mixed, uid: 7).hasPrefix("All ")
+                 && othersHelp(byName["Cursor"]!, uid: 501) == "")
     print("ok")
 }

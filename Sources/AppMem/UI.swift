@@ -180,24 +180,14 @@ struct Row: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(g.name), \(fmt(g.mem)), CPU \(cpu(g.cpu)), \(g.procs.count) processes\(g.leftover ? ", leftover" : "")")
+                .help(othersHelp(g))
                 if g.leftover {
                     Button("Stop", action: stop)
                         .controlSize(.small)
                         .disabled(!g.isSimulator && !g.procs.contains { $0.uid == getuid() })
                 }
             }
-            if expanded || only != nil {
-                ForEach((only ?? g.procs).prefix(10), id: \.pid) { p in
-                    HStack {
-                        Text(p.name).lineLimit(1).truncationMode(.middle)
-                        Spacer()
-                        Text(String(p.pid)).monospacedDigit()
-                        Text(cpu(p.cpu)).monospacedDigit().frame(width: 40, alignment: .trailing)
-                        Text(fmt(p.mem)).monospacedDigit().frame(minWidth: 62, alignment: .trailing)
-                    }
-                    .font(.caption).foregroundStyle(.secondary).padding(.leading, 38)
-                }
-            }
+            if expanded || only != nil { ProcList(procs: only ?? g.procs) }
         }
         .padding(.horizontal, 10).padding(.vertical, 3)
     }
