@@ -4,14 +4,19 @@
 #   ./build.sh           release build, ad-hoc signed: runs on this Mac
 #   ./build.sh debug     debug build
 #
-#   open build/AppMem.app                            run it (menu bar only, no Dock icon)
-#   build/AppMem.app/Contents/MacOS/AppMem --test    self-check of the pure rules
-#   build/AppMem.app/Contents/MacOS/AppMem --list    groups as text, like appmem.py
-#   build/AppMem.app/Contents/MacOS/AppMem --help    every flag
-#   build/AppMem.app/Contents/MacOS/AppMem --json [--cpu]          groups, RAM, swap, pressure as JSON
-#   build/AppMem.app/Contents/MacOS/AppMem --leftovers             one per line; exit 1 if any
-#   build/AppMem.app/Contents/MacOS/AppMem --stop [NAME ...] [--dry-run]   stop leftovers
-#   open appmem://report                             copy a Markdown report (also appmem://open, appmem://refresh)
+#   open build/AppMem.app      run it (menu bar only, no Dock icon)
+#
+#   AppMem=build/AppMem.app/Contents/MacOS/AppMem; the flags (same as $AppMem --help):
+#   $AppMem --list                          groups as text, like appmem.py
+#   $AppMem --json [--cpu]                  groups, RAM, swap, pressure as JSON; --cpu adds CPU %
+#   $AppMem --leftovers                     one per line; exit 1 if any
+#   $AppMem --stop [NAME ...] [--dry-run]   stop all or the named leftovers; not as root
+#   $AppMem --test                          self-check of the pure rules (prints ok)
+#   $AppMem --snapshot OUT.png [QUERY]      debug builds: the panel as a PNG
+#   $AppMem --snapshot-details OUT.png GROUP [QUERY]   debug builds: the Details window as a PNG
+#   $AppMem --help, -h                      every flag
+#
+#   open appmem://report       copy a Markdown report (also appmem://open, appmem://refresh)
 set -euo pipefail
 
 cd "$(dirname "$0")"
