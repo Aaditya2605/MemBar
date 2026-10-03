@@ -26,7 +26,6 @@ final class Model: ObservableObject {
     }
 
     var waste: Int64 { groups.filter(\.leftover).reduce(0) { $0 + $1.mem } }
-    var total: Int64 { groups.reduce(0) { $0 + $1.mem } }
 
     func schedule() {
         timer?.invalidate()
@@ -113,7 +112,9 @@ struct Panel: View {
                     Text("RAM \(fmt(model.sys.ram)) of \(fmt(Int64(ProcessInfo.processInfo.physicalMemory)))")
                         .help("Memory Used in Activity Monitor: app, wired and compressed memory")
                     Text("Swap \(fmt(model.sys.swap))").help("Swap in use on disk")
-                    Text("Apps \(fmt(model.total))").help("Sum of the memory of all processes below")
+                    // The rows and the small-groups footer: a hidden macOS group has no line, so not in it.
+                    Text("Apps \(fmt((listed.shown + listed.small).reduce(0) { $0 + $1.mem }))")
+                        .help("Sum of the memory of all processes below")
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 IdleLine(groups: model.groups)

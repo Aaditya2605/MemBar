@@ -461,6 +461,8 @@ func selfTest() {
     precondition(visible(mix, hideSmall: true, showMacOS: true).shown.map(\.name) == ["Claude", "macOS", "TinyLeft"])
     precondition(visible(mix, hideSmall: true, showMacOS: false).small.map(\.name) == ["Tiny"])
     precondition(visible(mix, hideSmall: false, showMacOS: false).shown.count == 3)
+    let hid = visible(mix, hideSmall: true, showMacOS: false)  // the header's Apps total sums both: no macOS in it
+    precondition((hid.shown + hid.small).map(\.name).sorted() == ["Claude", "Tiny", "TinyLeft"])
     var tinyPaused = mix[2]
     tinyPaused.procs[0].stopped = true  // paused from the right-click menu: it must stay findable
     precondition(visible([tinyPaused], hideSmall: true, showMacOS: true).shown.count == 1)
