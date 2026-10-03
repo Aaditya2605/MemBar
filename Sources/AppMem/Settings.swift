@@ -43,6 +43,7 @@ struct SettingsMenu: View {
     @AppStorage("refreshEvery") private var refreshEvery = 3
     @AppStorage("hideSmall") private var hideSmall = false
     @AppStorage("showMacOS") private var showMacOS = true
+    @AppStorage("countOrphans") private var countOrphans = false
     // Read again each time a menu opens: System Settings can turn the login item
     // off, and the right-click menu writes the list. SwiftUI makes the menu items
     // from the last body, so a Binding that reads them live would show old values.
@@ -61,6 +62,7 @@ struct SettingsMenu: View {
             Divider()
             Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
             Toggle("Show macOS Group", isOn: $showMacOS)
+            Toggle("Count Orphans as Leftovers", isOn: $countOrphans)
             Menu("Ignored Apps") {
                 if ignored.isEmpty { Text("None") }
                 // Checked = ignored; choosing one takes it off the list.

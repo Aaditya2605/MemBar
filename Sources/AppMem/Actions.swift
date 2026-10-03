@@ -127,7 +127,7 @@ struct GroupMenu: View {
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
         Divider()  // what AppMem tells about this app
         LimitMenu(g: g)  // Alerts.swift
-        if g.isApp || g.isSimulator {  // the groups that can be leftovers
+        if g.isApp || g.isSimulator || g.orphan {  // the groups that can be leftovers
             // Settings > Ignored Apps lists the same names; Model rescans when the list changes.
             let ignored = UserDefaults.standard.ignored.contains(g.name)
             Button(ignored ? "Flag as Leftover Again" : "Never Flag as Leftover") {
