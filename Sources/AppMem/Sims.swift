@@ -4,7 +4,8 @@ import SwiftUI
 // iOS Simulator devices and the Android emulator. One booted simulator holds GBs, and
 // the "iOS Simulator" group alone does not say which device: so the expanded group
 // gets a line per booted device, each with its own Shut Down. The Android emulator is a
-// group of its own, a leftover when Android Studio is not open (isLeftover).
+// group of its own while Android Studio runs it or once the app that started it quit
+// (ownerPath), a leftover when Android Studio is not open (isLeftover).
 
 struct SimDevice: Equatable {
     let udid: String, name: String, runtime: String

@@ -37,7 +37,7 @@ func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool
 /// when its app is gone: the responsibility call and Recall keep it in the group of an app
 /// that is still open (the agent's app, the terminal app). Not out of a leftover or an
 /// ignored app's group, where its app is known and quit, not out of the simulator's or the
-/// emulator's (their own groups, also when an agent started them), and not under an ignored name.
+/// emulator's (their own groups: the simulator's also when an agent booted it), and not under an ignored name.
 /// Then the orphan badge and its Stop: a group named after its own executable, not
 /// ignored, whose processes of `uid` are all orphans. `asLeftover` (Settings): it is a
 /// leftover too, for the dot, the waste total and Stop All.

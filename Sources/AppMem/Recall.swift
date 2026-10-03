@@ -31,9 +31,11 @@ func isCLI(_ path: String) -> Bool {
 /// ponytail: the same executable at a reused PID (node after node) passes as the same
 /// process; a start time would tell them apart.
 func ownerPath(_ p: Proc, top: pid_t, procs: [pid_t: Proc], owners: [pid_t: AppOwner]) -> String {
-    // Its own group also while Android Studio runs it, as the simulator is not Xcode's.
-    if isEmulatorPath(p.path) { return p.path }
     let t = procs[top] ?? p
+    // Its own group also while Android Studio runs it, as the simulator is not Xcode's. An
+    // app that started it (VS Code with Flutter, Terminal) keeps it: it is in use until that
+    // app quits, and then its top is the emulator itself, its own group again.
+    if isEmulatorPath(p.path) && appOf(t.path).name.lowercased().hasPrefix("android studio") { return p.path }
     guard let o = owners[top], t.path == o.exe, t.uid == o.uid, p.uid == o.uid else { return t.path }
     return o.app
 }

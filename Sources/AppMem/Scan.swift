@@ -530,6 +530,25 @@ func selfTest() {
         precondition(!isLeftover(alone, open: ["android studio preview"]) && isLeftover(alone, open: ["xcode", "studio"]))
     }
 
+    do {  // an emulator that an open app started stays in that app's group: no leftover, no Stop All
+        let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", sdk = "/Users/a/Library/Android/sdk/emulator/"
+        let term = "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
+        let ps = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(60, 1, code, 500), p(61, 60, "/bin/zsh", 5),
+                                                   p(62, 61, sdk + "emulator", 20), p(63, 62, sdk + "qemu/darwin-aarch64/qemu-system-aarch64", 3000),
+                                                   p(64, 63, sdk + "crashpad_handler", 5)])
+        let byCode = group(ps, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 })
+        let vs = byCode.first { $0.name == "Visual Studio Code" }!
+        precondition(!byCode.contains { $0.isEmulator || $0.leftover } && Set(vs.procs.map(\.pid)) == [60, 61, 62, 63, 64])
+        var fromTerm = ps
+        fromTerm[60] = p(60, 1, term, 80).1  // `emulator -avd X` in Terminal
+        precondition(!group(fromTerm, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 }).contains { $0.isEmulator || $0.leftover })
+        var quit = ps  // VS Code quit, the shell with it: the emulator alone is its own group, a leftover
+        quit[60] = nil; quit[61] = nil
+        quit[62] = p(62, 1, sdk + "emulator", 20).1
+        let alone = group(quit, responsible: { $0 }).first { $0.isEmulator }!
+        precondition(alone.leftover && Set(alone.procs.map(\.pid)) == [62, 63, 64])
+    }
+
     // Process tree: nesting, memory order among siblings, orphans are roots, loops end.
     func t(_ ps: [(pid_t, Proc)]) -> [String] { tree(ps.map(\.1)).map { "\($0.proc.pid):\($0.depth)" } }
     precondition(t([p(5, 1, "/r", 50), p(9, 99, "/orphan", 45), p(7, 5, "/big", 40), p(8, 7, "/grand", 30), p(6, 5, "/small", 10)])
@@ -659,7 +678,7 @@ func selfTest() {
         let a = alertsToSend(prev: st, groups: [o], sys: SysMem(), growth: [:], now: t0 + 30, settings: on, uid: 501).1
         precondition(a.count == 1 && a[0].stop && a[0].body == orphanHelp + ". Its processes use 900 MB.")
         precondition(report(groups: [o], sys: SysMem(), date: t0).hasSuffix("\n| node | 900 MB | – | 1 | orphan |"))
-        // An agent's detached node (10) started the emulator (11), Android Studio is open: it stays in its group.
+        // An agent's detached node (10) started the emulator (11), Android Studio runs it: it stays in its group.
         let n = Proc(pid: 10, ppid: 1, uid: 501, path: node, mem: 1 << 20)
         let e = Proc(pid: 11, ppid: 10, uid: 501, path: "/Users/a/Library/Android/sdk/emulator/emulator", mem: 1 << 20)
         let og = orphaning([Group(name: "Android Emulator", isApp: true, procs: [e]), Group(name: "node", isApp: false, procs: [n])],
