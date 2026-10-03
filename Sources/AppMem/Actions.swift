@@ -112,6 +112,8 @@ struct GroupMenu: View {
     var body: some View {
         let app = Actions.runningApp(g), a = allowed(g, app: app != nil)
         let file = g.bundle ?? g.procs.first { $0.path.hasPrefix("/") }?.path
+        Button("Show Details…") { Details.show(g) }  // Details.swift
+        Divider()
         Button("Quit \(g.name)") { Actions.quit(g, app) }.disabled(!a.quit)
         Button("Force Quit \(g.name)…") { if Actions.confirmForceQuit(g.name) { Actions.quit(g, app, force: true) } }
             .disabled(!a.quit)

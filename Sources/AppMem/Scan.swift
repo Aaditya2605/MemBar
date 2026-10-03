@@ -12,6 +12,7 @@ struct Proc {
     var cpu: Double = 0  // % of one core since the previous scan
     var ports: [UInt16] = []  // TCP ports it listens on, read only while the panel is open
     var stopped = false  // SIGSTOP: paused by AppMem, a debugger or ctrl-Z in a shell
+    var peak: Int64 = 0  // the most memory since it started; 0 when not readable (other users)
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -242,7 +243,7 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
         procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: path(of: pid, comm: comm(s)),
                           mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0,
                           cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0,
-                          stopped: s.pbsi_status == SSTOP)
+                          stopped: s.pbsi_status == SSTOP, peak: ok ? Int64(ri.ri_lifetime_max_phys_footprint) : 0)
     }
     return procs
 }
@@ -474,5 +475,33 @@ func selfTest() {
     back[0].respawns = "x"  // Cursor came back after Stop: the respawn icon is a badge too
     precondition(ignoring(back, ["Cursor"])[0].respawns == nil && ignoring(back, [])[0].respawns == "x")
     recallTest()
+
+    do {  // Details window: the extra columns, search, summary, sort keys, the multi-selection menu
+        precondition(userName(0) == "root" && userName(getuid()) == NSUserName() && userName(4_000_000) == "4000000")
+        precondition(threadCount(getpid())! >= 1 && threadCount(-5) == nil)
+        let me = scan(top: [:])[getpid()]!
+        precondition(me.mem > 0 && me.peak >= me.mem)
+        let a = DetailRow(p: procs[10]!, user: "ann", command: "/x/node server.js")  // no port, threads not readable
+        let b = DetailRow(p: pp[11]!, user: "root", threads: 4)  // :3000
+        precondition(detailMatch(a, "server") && detailMatch(a, "ann") && detailMatch(a, "") && detailMatch(b, "11") && detailMatch(b, ":3000"))
+        precondition(!detailMatch(b, "1") && !detailMatch(a, "3000"))
+        precondition([a, b].sorted(using: KeyPathComparator(\DetailRow.portKey)).map(\.id) == [11, 10])  // no port last
+        precondition([a, b].sorted(using: KeyPathComparator(\DetailRow.threads, order: .reverse)).map(\.id) == [11, 10])  // unknown last
+        let cursor = byName["Cursor"]!
+        precondition(detailsSummary(cursor.procs, total: 2) == "2 processes, 800 MB, CPU –")
+        precondition(detailsSummary([procs[11]!], total: 2) == "1 of 2 processes, 300 MB, CPU –" && detailsSummary([procs[11]!], total: 1) == "1 process, 300 MB, CPU –")
+        precondition(startedText(.distantPast) == "–" && startedText(now, now: now) == now.formatted(date: .omitted, time: .shortened))
+        var paused = cursor
+        paused.procs[0].stopped = true
+        precondition(allowed(paused.procs, in: paused, uid: 501, me: 99) == Allowed(quit: true, pause: true, resume: true))
+        precondition(allowed(paused.procs, in: paused, uid: 502, me: 99) == Allowed() && allowed([], in: cursor, uid: 501, me: 99) == Allowed())
+        precondition(allowed(byName["macOS"]!.procs, in: byName["macOS"]!, uid: 501, me: 99) == Allowed())
+        #if DEBUG
+        precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == nil)
+        precondition(parseArgs(["--snapshot-details", "x.png"]) == .bad("--snapshot-details needs OUT.png GROUP"))
+        #else
+        precondition(parseArgs(["--snapshot-details", "x.png", "Claude"]) == .bad("--snapshot-details works only in debug builds"))
+        #endif
+    }
     print("ok")
 }
