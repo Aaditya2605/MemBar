@@ -205,14 +205,20 @@ private func comm(_ s: proc_bsdshortinfo) -> String {
     withUnsafeBytes(of: s.pbsi_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
 }
 
-/// A tool's stdout; empty if it cannot run. Read before wait: a full pipe would block the tool.
-func output(_ exe: String, _ args: [String]) -> Data {
+/// A tool's stdout; empty if it cannot run or takes more than `timeout` s. Read before wait: a full pipe would block the tool.
+/// ponytail: while simctl stays wedged, each Sims.read (every 30 s, panel open) still holds the scan queue up to 10 s.
+func output(_ exe: String, _ args: [String], timeout: TimeInterval = 10) -> Data {
     let p = Process(), pipe = Pipe()
     p.executableURL = URL(fileURLWithPath: exe); p.arguments = args
-    p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
+    p.standardOutput = pipe; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
     guard (try? p.run()) != nil else { return Data() }
-    defer { p.waitUntilExit() }
-    return pipe.fileHandleForReading.readDataToEndOfFile()
+    // A wedged daemon (CoreSimulatorService for simctl) must not hold the scan queue for good.
+    let end = DispatchWorkItem { if p.isRunning { p.terminate() } }  // our own child only; xcrun execs simctl, same PID
+    DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: end)
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit(); end.cancel()
+    // Ended: half a top table or job list is worse than none. Not status 0: launchctl print says "not found" that way.
+    return p.terminationReason == .exit ? data : Data()
 }
 
 /// Footprint via top, for processes that proc_pid_rusage refuses (root and other

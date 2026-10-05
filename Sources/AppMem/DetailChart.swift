@@ -52,10 +52,14 @@ struct RangePicker: View {
     }
 }
 
+/// The hovered time. A class in a plain @State, so a hover does not run DetailChart's body (and
+/// rebuild all its marks, 15 ms at 24 h): only HoverLayer observes it.
+final class HoverBox: ObservableObject { @Published var at: Date? }
+
 struct DetailChart: View {
     let history: History, g: Group
     @AppStorage("chartDay") private var day = false
-    @State private var hover: Date?
+    @State private var hover = HoverBox()
 
     var body: some View {
         let all = groupSeries(g.id, history.older + history.samples)
@@ -112,12 +116,12 @@ struct DetailChart: View {
         let unit: Double = top >= 1 << 30 ? 1_073_741_824 : 1_048_576
         return Chart {
             ForEach(pts.indices, id: \.self) { i in line(pts, i, unit: unit) }
-            if let i = hover.flatMap({ nearest(pts, to: $0) }) { picked(pts[i], now: now, unit: unit) }
         }
         // The oldest point can be a little older than the span: History trims by its newest sample's time, before now.
         .chartXScale(domain: min(now - span, pts[0].at)...now)
         .chartYScale(domain: 0...Double(max(top, 1)) / unit * 1.25)  // headroom: the hover's label sits above the line
-        .chartXSelection(value: $hover)
+        .chartXSelection(value: Binding(get: { hover.at }, set: { hover.at = $0 }))
+        .chartOverlay { proxy in HoverLayer(hover: hover, proxy: proxy, pts: pts, now: now, unit: unit) }
         .chartXAxis {
             AxisMarks(preset: .aligned, values: .automatic(desiredCount: 4)) { _ in  // aligned: a label at now is not cut off
                 AxisGridLine()
@@ -144,17 +148,30 @@ struct DetailChart: View {
             PointMark(x: x, y: y).symbolSize(12).foregroundStyle(Color.accentColor)
         }
     }
+}
 
-    /// The hovered point: a rule, a dot, and its memory and time above.
-    @ChartContentBuilder func picked(_ p: (at: Date, mem: Int64, run: Int), now: Date, unit: Double) -> some ChartContent {
-        RuleMark(x: .value("Time", p.at)).foregroundStyle(.secondary).lineStyle(StrokeStyle(lineWidth: 1))
-            .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                Text("\(fmt(p.mem))  \(whenText(p.at, now: now))").font(.caption).monospacedDigit()
+/// The hovered point over the chart: a rule, a dot, and its memory and time at the top, kept inside the chart.
+struct HoverLayer: View {
+    @ObservedObject var hover: HoverBox
+    let proxy: ChartProxy, pts: [(at: Date, mem: Int64, run: Int)], now: Date, unit: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            if let plot = proxy.plotFrame, let i = hover.at.flatMap({ nearest(pts, to: $0) }),
+               let px = proxy.position(forX: pts[i].at), let py = proxy.position(forY: Double(pts[i].mem) / unit) {
+                let f = geo[plot], x = f.minX + px, w = geo.size.width
+                Path { $0.move(to: CGPoint(x: x, y: f.minY)); $0.addLine(to: CGPoint(x: x, y: f.maxY)) }.stroke(.secondary, lineWidth: 1)
+                Circle().fill(Color.accentColor).frame(width: 6, height: 6).position(x: x, y: f.minY + py)
+                Text("\(fmt(pts[i].mem))  \(whenText(pts[i].at, now: now))").font(.caption).monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(.background, in: RoundedRectangle(cornerRadius: 4))
                     .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.quaternary))
+                    .fixedSize()
+                    .alignmentGuide(.leading) { d in -min(max(x - d.width / 2, 0), w - d.width) }  // centered on the rule, not cut off
+                    .frame(width: w, height: geo.size.height, alignment: .topLeading).offset(y: f.minY)
             }
-        PointMark(x: .value("Time", p.at), y: .value("Memory", Double(p.mem) / unit)).symbolSize(30).foregroundStyle(Color.accentColor)
+        }
+        .allowsHitTesting(false)  // the chart's own selection gets the pointer
     }
 }
 

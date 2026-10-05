@@ -102,7 +102,9 @@ struct Orphans {
     private var jobs: Set<pid_t> = [], at = Date.distantPast  // distantPast: nothing is judged yet
 
     mutating func mark(_ groups: [Group], _ procs: [pid_t: Proc], open: Bool) -> [Group] {
-        if open, -at.timeIntervalSinceNow > 30 { let now = Date(); jobs = launchdPIDs(launchctlList()); at = now }
+        if open, -at.timeIntervalSinceNow > 30 {  // empty: launchctl failed or timed out; no jobs would make them all orphans
+            let now = Date(), l = launchctlList(); if !l.isEmpty { jobs = launchdPIDs(l); at = now }
+        }
         let at = at, d = UserDefaults.standard
         return orphaning(groups, orphans(procs, jobs: jobs, detached: { detached($0, before: at) }, terminal: hasTerminal), procs: procs,
                          ignored: d.ignored, asLeftover: d.countOrphans)

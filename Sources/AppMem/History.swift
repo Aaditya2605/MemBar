@@ -103,6 +103,12 @@ struct Sparkline: View {
     }
 }
 
+// A Row re-renders on each arrow key (it observes Nav) and gets a new points array; tuples are not
+// Equatable, so without this each expanded row would build its Chart again (about 7 ms at 240 points).
+extension Sparkline: Equatable {
+    static func == (a: Self, b: Self) -> Bool { a.growing == b.growing && a.points.elementsEqual(b.points) { $0 == $1 } }
+}
+
 #if DEBUG
 extension History {
     /// `HISTORY=1 AppMem --snapshot ...`: an hour of made-up samples around the live

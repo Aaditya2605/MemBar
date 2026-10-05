@@ -370,7 +370,7 @@ struct Row: View {
             .highlight(picked, lead: -4, trail: -4, top: -2, bottom: isOpen ? 1 : -2)  // where it was with the margins outside
             if isOpen {
                 VStack(alignment: .leading, spacing: 2) {
-                    if points.count >= 3 { Sparkline(points: points, growing: growing != nil).padding(.leading, 38) }
+                    if points.count >= 3 { Sparkline(points: points, growing: growing != nil).equatable().padding(.leading, 38) }
                     if g.isSimulator { DeviceLines(g: g) }
                     if g.isVM { VMLines(g: g) }  // Containers.swift
                     ProcList(g: g, procs: only ?? g.procs, nav: nav)
