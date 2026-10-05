@@ -813,6 +813,9 @@ func selfTest() {
         // A rule set on an app idle for 2 h counts from when it was set: never a quit at once.
         precondition(quits(groups, ruled: ["Claude": t0 - h + 1]).isEmpty && quits(groups, ruled: ["Claude": t0 - h]) == ["Claude"])
         precondition(quits(groups, tried: ["Claude": t0 - 2 * h], ruled: ["Claude": t0 - h]).isEmpty)  // still one ask per stretch
+        var vm = claude
+        vm.procs.append(Proc(pid: 99, ppid: 1, uid: 501, path: "/opt/homebrew/bin/limactl", mem: 0))
+        precondition(quits([vm]).isEmpty)  // runs a VM: in use with no window
         precondition(idleRule("Claude", rules) == 60 && idleRule("WhatsApp", rules) == nil && idleRule("Nope", rules) == nil)
         precondition(hours(60) == "1 hour" && hours(240) == "4 hours" && hours(120).capitalized == "2 Hours")
 

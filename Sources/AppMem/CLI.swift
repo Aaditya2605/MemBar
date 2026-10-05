@@ -106,7 +106,9 @@ private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group]
         procs = scan(top: top)
         addCPU(&procs, prev: prev, seconds: seconds)
     }
-    return ignoring(group(procs, responsible: responsible), UserDefaults.standard.ignored)
+    // The bare binary (.build/*/AppMem) has its own defaults domain: also the menu app's Never Flagged list.
+    let d = UserDefaults.standard, app = d.persistentDomain(forName: "com.officecommun.appmem")?["ignored"] as? [String] ?? []
+    return ignoring(group(procs, responsible: responsible), d.ignored + app)
 }
 
 /// Runs the command in `args` and returns the exit status; nil when `args` has

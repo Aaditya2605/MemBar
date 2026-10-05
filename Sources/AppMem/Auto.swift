@@ -65,7 +65,8 @@ func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, s
 /// set on an app idle for hours does not quit it at once. Never when Usage has no time for
 /// it (unknown is not idle), never the frontmost app, never one with a paused process (it
 /// cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
-/// quit resumes them, else Pause When in Background would keep it from ever quitting).
+/// quit resumes them, else Pause When in Background would keep it from ever quitting), never one that
+/// runs a VM (isVM: in use with no window, see restarts).
 /// `tried`: name → the last-front time of a quit already asked: one ask per idle stretch, so
 /// an app whose user cancelled the quit (a save dialog) is not asked again each minute.
 /// ponytail: frontmost is the only sign of use (see Usage), so a player with a rule quits
@@ -73,7 +74,7 @@ func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, s
 func idleQuits(_ groups: [Group], rules: [String: Int], ruled: [String: Date], lastFront: (String) -> Date?,
                frontmost: String?, tried: [String: Date], paused: [String: Set<pid_t>] = [:], now: Date) -> [Group] {
     groups.filter { g in
-        guard let m = idleRule(g.name, rules), !g.leftover, !g.ignored, g.name != "macOS", g.name != frontmost,
+        guard let m = idleRule(g.name, rules), !g.leftover, !g.ignored, !g.isVM, g.name != "macOS", g.name != frontmost,
               !g.procs.contains(where: { $0.stopped && !(paused[g.name] ?? []).contains($0.pid) }), let last = lastFront(g.name), tried[g.name] != last else { return false }
         return now.timeIntervalSince(max(last, ruled[g.name] ?? last)) >= TimeInterval(m * 60)
     }

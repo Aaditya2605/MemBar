@@ -41,6 +41,10 @@ func started(_ pid: pid_t) -> Date? {
     return Date(timeIntervalSince1970: Double(t.tv_sec) + Double(t.tv_usec) / 1e6)
 }
 
+/// The browser of a Chromium PWA's app shim (bundle ID `<browser>.app.<id>`): the browser draws
+/// the shim's windows, so it is in use while the shim is in front.
+func shimBrowser(_ id: String?) -> String? { id.flatMap { id in id.range(of: ".app.").map { String(id[..<$0.lowerBound]) } } }
+
 /// When each app was last frontmost, by group name. One workspace observer, no polling.
 /// ponytail: frontmost is the only sign of use, so music that plays in the background
 /// reads as idle; the badge only suggests a quit. Only a Quit When Idle rule, set by hand, acts.
@@ -48,7 +52,7 @@ enum Usage {
     private static let key = "lastFront"
     // ponytail: never pruned; one entry per app ever used, a few hundred at most.
     private static var seen: [String: Double] = [:]
-    private static var front: String?  // frontmost now: in use, whatever its stamp says
+    private static var front: Set<String> = []  // frontmost now (inUse): in use, whatever its stamp says
     private static var saving = false
 
     static func start() {
@@ -64,12 +68,19 @@ enum Usage {
         }
     }
 
+    /// The names that app `app` in front puts in use: its own, and a PWA's browser (shimBrowser).
+    static func inUse(_ app: NSRunningApplication?) -> [String] {
+        guard let path = app?.executableURL?.path else { return [] }
+        let browser = shimBrowser(app?.bundleIdentifier).flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first?.executableURL }
+        return [appOf(path).name] + (browser.map { [appOf($0.path).name] } ?? [])
+    }
+
     private static func activated(_ app: NSRunningApplication?) {
-        guard let path = app?.executableURL?.path else { return }
-        let now = Date().timeIntervalSince1970, name = appOf(path).name
-        if let f = front { seen[f] = now }  // it was frontmost until now
-        front = name
-        seen[name] = now
+        let names = inUse(app), now = Date().timeIntervalSince1970
+        guard !names.isEmpty else { return }
+        for f in front { seen[f] = now }  // they were frontmost until now
+        front = Set(names)
+        for n in names { seen[n] = now }
         save()
     }
 
@@ -80,13 +91,13 @@ enum Usage {
         saving = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
             saving = false
-            if let f = front { seen[f] = Date().timeIntervalSince1970 }
+            for f in front { seen[f] = Date().timeIntervalSince1970 }
             UserDefaults.standard.set(seen, forKey: key)
         }
     }
 
     /// When app `name` was last frontmost: now while it is, nil when never seen.
-    static func lastFront(_ name: String) -> Date? { name == front ? Date() : seen[name].map(Date.init(timeIntervalSince1970:)) }
+    static func lastFront(_ name: String) -> Date? { front.contains(name) ? Date() : seen[name].map(Date.init(timeIntervalSince1970:)) }
 
     static func idle(_ g: Group) -> TimeInterval? { idleTime(g, lastFront: lastFront(g.name), now: Date()) }
 

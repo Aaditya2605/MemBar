@@ -19,14 +19,15 @@ func restartRule(_ name: String, _ rules: [String: Int] = UserDefaults.standard.
 /// apps do. nil: no app runs at the group's .app.
 func restartable(_ bundleID: String?) -> Bool { bundleID.map { !$0.hasPrefix("com.apple.") } ?? false }
 
-/// The app's own processes in `g`: in its .app, or an XPC service that macOS holds one of those
-/// responsible for (WebKit's web pages, the open panel). Not the command-line jobs it started (a
-/// terminal's shells and builds, an editor's dev server, an agent), nor the XPC services that those
-/// jobs use (an agent's SourceKitService, a script's video encoder): they are in the group only
-/// through the job. `responsible`: as in group().
+/// The app's own processes in `g`: an app or helper executable in its .app (openApps), or an XPC
+/// service that macOS holds one of those responsible for (WebKit's web pages, the open panel). Not
+/// the tools its .app bundles (Xcode's compilers and build service, a JBR's Gradle daemon), nor the
+/// command-line jobs it started (a terminal's shells and builds, an editor's dev server, an agent),
+/// nor the XPC services that those jobs use (an agent's SourceKitService, a script's video
+/// encoder): they are in the group only through the job. `responsible`: as in group().
 func ownProcs(_ g: Group, responsible: (pid_t) -> pid_t) -> [Proc] {
     guard let b = g.bundle else { return [] }
-    let inApp = Set(g.procs.filter { $0.path.hasPrefix(b + "/") }.map(\.pid))
+    let inApp = Set(g.procs.filter { $0.path.hasPrefix(b + "/") && !openApps([$0.path]).isEmpty }.map(\.pid))
     return g.procs.filter { inApp.contains($0.pid) || $0.path.contains(".xpc/") && inApp.contains(responsible($0.pid)) }
 }
 
@@ -37,13 +38,14 @@ func ownProcs(_ g: Group, responsible: (pid_t) -> pid_t) -> [Proc] {
 /// rule: AppMem watched it since then. Never the frontmost app, never one with a paused process
 /// (it cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
 /// restart resumes them, else Pause When in Background would keep it from ever restarting), never
-/// an Apple app or a bare executable (`bundleID`: of the app at the group's .app), at most once in
-/// 6 h for each app (`restarted`: name → the last try).
+/// an Apple app or a bare executable (`bundleID`: of the app at the group's .app), never one that runs
+/// a VM (isVM: used from the command line with no window, as Docker, or from a terminal's tab; a quit
+/// stops it), at most once in 6 h for each app (`restarted`: name → the last try).
 func restarts(_ groups: [Group], rules: [String: Int], ruled: [String: Date], lastFront: (String) -> Date?, frontmost: String?,
               restarted: [String: Date], paused: [String: Set<pid_t>], bundleID: (Group) -> String?, now: Date,
               responsible: (pid_t) -> pid_t = responsible) -> [Group] {
     groups.compactMap { g in
-        guard let mb = restartRule(g.name, rules), !g.leftover, !g.ignored, g.isApp, g.name != frontmost,
+        guard let mb = restartRule(g.name, rules), !g.leftover, !g.ignored, g.isApp, !g.isVM, g.name != frontmost,
               !g.procs.contains(where: { $0.stopped && !(paused[g.name] ?? []).contains($0.pid) }),
               restarted[g.name].map({ now.timeIntervalSince($0) >= 6 * 3600 }) ?? true,
               now.timeIntervalSince(max(lastFront(g.name) ?? .distantPast, ruled[g.name] ?? now)) >= 30 * 60, restartable(bundleID(g)) else { return nil }
@@ -66,8 +68,9 @@ struct PauseState {
     var paused: [String: Group] = [:]  // app name → the processes AppMem stopped: only these are resumed, not a Pause by hand
 
     /// Each scan: the apps to pause now, and the pauses to undo as their rule is gone. Paused: an open
-    /// app (not a leftover, not ignored) with the rule, a regular one (switching to it resumes it; a
-    /// menu bar app has no Dock icon to click), not frontmost, in the background for 5 min since it
+    /// app (not a leftover, not ignored, no VM: `docker ps` and SSH would hang) with the rule, a
+    /// regular one (switching to it resumes it; a menu bar app has no Dock icon to click), not
+    /// frontmost, in the background for 5 min since it
     /// was last frontmost or since its clock started, the later. A pause is forgotten only by a
     /// resume or when the app is gone: a scan from before the SIGSTOP still reads it as running.
     mutating func step(_ groups: [Group], rules: [String: Bool], lastFront: (String) -> Date?, frontmost: String?,
@@ -78,7 +81,7 @@ struct PauseState {
         paused = paused.filter { on.contains($0.key) && names.contains($0.key) }  // gone: its processes quit
         clock = Dictionary(uniqueKeysWithValues: on.map { ($0, clock[$0] ?? now) })
         var pause: [Group] = []
-        for g in groups where on.contains(g.name) && paused[g.name] == nil && !g.leftover && !g.ignored && g.name != frontmost {
+        for g in groups where on.contains(g.name) && paused[g.name] == nil && !g.leftover && !g.ignored && !g.isVM && g.name != frontmost {
             guard now.timeIntervalSince(max(lastFront(g.name) ?? .distantPast, clock[g.name] ?? now)) >= 5 * 60, regular(g) else { continue }
             var own = g
             own.procs = pauseTargets(g, uid: uid, me: me, responsible: responsible)
@@ -124,10 +127,10 @@ enum Rules {
     private static var restarted: [String: Date] = [:]  // app name → the last restart that the rule tried
     private static var term: DispatchSourceSignal?
 
-    /// At launch: resume at once when the user switches to a paused app, and before AppMem exits.
+    /// At launch: resume at once when the user switches to a paused app (or to its PWA, see Usage.inUse), and before AppMem exits.
     static func start() {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
-            if let path = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.executableURL?.path { resume(appOf(path).name) }
+            Usage.inUse(note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication).forEach { resume($0) }
         }
         // queue nil: on the posting (main) thread, before the exit.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in resumeAll() }
@@ -262,6 +265,7 @@ func rulesTest() {
     // Restart When Above: Slack 5 GB, rule 4 GB, not frontmost for 2 h.
     precondition(restartRule("A", ["A": 4096]) == 4096 && restartRule("A", ["A": 1000]) == nil && restartRule("B", ["A": 4096]) == nil)
     precondition(restartable("com.tinyspeck.slackmacgap") && !restartable("com.apple.dt.Xcode") && !restartable(nil))
+    precondition(shimBrowser("com.google.Chrome.app.abc") == "com.google.Chrome" && shimBrowser("com.tinyspeck.slackmacgap") == nil && shimBrowser(nil) == nil)
     let slack = app("Slack", 5000), rules = ["Slack": 4096]
     let helper = slackApp + "/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper"
     let web = "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
@@ -305,6 +309,13 @@ func rulesTest() {
     precondition(pauseTargets(s, uid: 501, me: 11, responsible: resp).map(\.pid) == [10, 12])
     precondition(pauseTargets(s, uid: 501, me: 99, responsible: { _ in -1 }).map(\.pid) == [10, 11])  // no responsibility call: no XPC service
     precondition(pauseTargets(Group(name: "x", isApp: true, procs: s.procs), uid: 501, me: 99, responsible: resp).isEmpty)
+    // The tools its .app bundles are jobs too: Xcode's compiler and build service, Android Studio's Gradle daemon (bundled JBR).
+    var xcode = app("Xcode", 1000)
+    xcode.procs += [proc(31, "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend"),
+                    proc(32, "/Applications/Xcode.app/Contents/SharedFrameworks/XCBuild.framework/Versions/A/PlugIns/XCBBuildService.bundle/Contents/MacOS/XCBBuildService")]
+    var studio = app("Android Studio", 1000)
+    studio.procs.append(proc(33, "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java"))
+    precondition(pauseTargets(xcode, uid: 501, me: 99, responsible: resp).map(\.pid) == [10] && ownProcs(studio, responsible: resp).map(\.pid) == [10])
 
     // The clock starts when the rule is first seen; 5 min in the background, then a pause.
     var st = PauseState()
@@ -342,6 +353,10 @@ func rulesTest() {
     var leftover = s
     leftover.leftover = true
     precondition(step([leftover], at: 90 * m).pause.isEmpty && step(ignoring([leftover], ["Slack"]), at: 90 * m).pause.isEmpty)
+    // A VM app (Docker: Apple's VM process, responsible: its driver in the .app) is used from the command line: never restarted or paused.
+    var docker = slack
+    docker.procs.append(proc(18, "/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine", 1))
+    precondition(docker.isVM && restart([docker]).isEmpty && step([docker], at: 100 * m).pause.isEmpty && step([docker], at: 110 * m).pause.isEmpty)
 
     // The log keeps one pause line per app; the symbols and their help.
     let e = { (name: String, how: String, at: TimeInterval) in Freed.Entry(at: t0 + at, name: name, mem: 1, how: how) }
