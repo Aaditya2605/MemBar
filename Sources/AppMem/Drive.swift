@@ -12,6 +12,7 @@ import UserNotifications
 enum Drive {
     private static var dir = "", lines: [String] = [], failed = 0
     private static var scans = 0  // Model.onUpdate calls: one per scan
+    private static var focusLost = false  // a key went out while the window was not key (see press)
 
     static func start(_ out: String) {
         // An .app reads the installed app's settings (same bundle id); the bare binary has its own.
@@ -92,34 +93,36 @@ enum Drive {
     /// 2. Keys through the popover's window, as the keyboard sends them.
     @MainActor static func keys(_ d: Delegate) async {
         guard let w = d.popover.contentViewController?.view.window, let nav = Nav.shown else { return check(false, "the popover's window and Nav") }
+        focusLost = false
         await press(.down, w)
         let first = nav.sel
-        check(first != nil && first?.pid == nil, "Down selects a row: \(first?.group ?? "none")")
+        checkKeys(first != nil && first?.pid == nil, "Down selects a row: \(first?.group ?? "none")")
         await press(.down, w)
-        check(nav.sel != first && nav.sel?.pid == nil, "Down again selects the next row: \(nav.sel?.group ?? "none")")
+        checkKeys(nav.sel != first && nav.sel?.pid == nil, "Down again selects the next row: \(nav.sel?.group ?? "none")")
         shot("2-down", w)
         await press(.right, w)
-        check(nav.sel.map { nav.expanded.contains($0.group) } == true, "Right opens it")
+        checkKeys(nav.sel.map { nav.expanded.contains($0.group) } == true, "Right opens it")
         shot("3-right", w)
         await press(.left, w)
-        check(nav.expanded.isEmpty, "Left closes it")
+        checkKeys(nav.expanded.isEmpty, "Left closes it")
         await press(Key(chars: "c", code: 8, mods: .command), w)  // through the main menu's Copy (main.swift)
         let name = d.model.groups.first { $0.id == nav.sel?.group }?.name ?? "?"
-        check(NSPasteboard.general.string(forType: .string)?.hasPrefix("\(name): ") == true, "⌘C copies the row's summary")
+        checkKeys(NSPasteboard.general.string(forType: .string)?.hasPrefix("\(name): ") == true, "⌘C copies the row's summary")
         let n = scans
         await press(Key(chars: "r", code: 15, mods: .command), w)
-        check(await until(5) { scans > n }, "⌘R scans")
+        checkKeys(await until(5) { scans > n }, "⌘R scans")
         await press(Key(chars: "f", code: 3, mods: .command), w)
-        check(editing(w), "⌘F puts the focus in the search field: \(responder(w))")
+        checkKeys(editing(w), "⌘F puts the focus in the search field: \(responder(w))")
         for (c, code) in [("f", 3), ("i", 34), ("n", 45)] as [(String, UInt16)] { await press(Key(chars: c, code: code), w) }
-        check(search(w) == "fin", "typing fills the search: \"\(search(w) ?? "no field")\"")
+        checkKeys(search(w) == "fin", "typing fills the search: \"\(search(w) ?? "no field")\"")
         shot("4-search", w)
         await press(.escape, w)
-        check(search(w) == "" && d.popover.isShown, "Esc clears the search, the popover stays: \"\(search(w) ?? "no field")\"")
+        checkKeys(search(w) == "" && d.popover.isShown, "Esc clears the search, the popover stays: \"\(search(w) ?? "no field")\"")
         shot("5-cleared", w)
         await press(.escape, w)
         // didClose comes after the close animation
-        check(await until(3) { !d.popover.isShown && !d.model.panelOpen }, "Esc again closes the popover and the fast scans")
+        checkKeys(await until(3) { !d.popover.isShown && !d.model.panelOpen }, "Esc again closes the popover and the fast scans")
+        if d.popover.isShown { d.popover.performClose(nil); _ = await until(3) { !d.popover.isShown } }  // the next step opens it again
     }
 
     /// 3. Show Details… from the open panel, then its close button.
@@ -130,8 +133,9 @@ enum Drive {
         // didShow moves the focus to the list after the show animation, about 0.5 s after isShown: a fixed 0.5 s failed 1 run in 8.
         check(await until(2) { search(pw) == "" && !editing(pw) } && d.popover.isShown, "open again: no search, the focus on the list: \(responder(pw))")
         if let pw {  // a letter on the list starts a search with it; the next one adds to it
+            focusLost = false
             for (c, code) in [("s", 1), ("p", 35)] as [(String, UInt16)] { await press(Key(chars: c, code: code), pw) }
-            check(search(pw) == "sp" && editing(pw), "typing on the list searches: \"\(search(pw) ?? "no field")\"")
+            checkKeys(search(pw) == "sp" && editing(pw), "typing on the list searches: \"\(search(pw) ?? "no field")\"")
             shot("6-typed", pw)
             await press(.escape, pw)
         }
@@ -219,6 +223,7 @@ enum Drive {
 
     /// Down and up through NSApp, as the window server sends them: key equivalents, then the key window.
     @MainActor static func press(_ k: Key, _ w: NSWindow) async {
+        if !w.isKeyWindow { focusLost = true }  // the window server gives keys to the key window: this one gets none
         for t in [NSEvent.EventType.keyDown, .keyUp] {
             NSApp.sendEvent(NSEvent.keyEvent(with: t, location: .zero, modifierFlags: k.mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                              windowNumber: w.windowNumber, context: nil, characters: k.chars,
@@ -262,6 +267,13 @@ enum Drive {
     @MainActor static func checkKey(_ w: NSWindow?, _ what: String) {
         if w?.isKeyWindow != true, frontmost() != "AppMem" { return note("skip  \(what): \(frontmost()) has the focus") }
         check(w?.isKeyWindow == true, what)
+    }
+
+    /// A check after keys: if another app took the focus (the person at the Mac clicked), the
+    /// keys went nowhere, and a failure says nothing about AppMem.
+    @MainActor static func checkKeys(_ ok: Bool, _ what: String) {
+        if !ok, focusLost { return note("skip  \(what): \(frontmost()) took the focus, so the keys went nowhere") }
+        check(ok, what)
     }
 
     static func check(_ ok: Bool, _ what: String) {

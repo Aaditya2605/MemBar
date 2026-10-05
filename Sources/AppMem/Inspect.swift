@@ -232,7 +232,9 @@ extension Drive {
         let byKey = ws[1]()?.isKeyWindow == true  // ⌘W goes to the key window only
         if let w = ws[1](), byKey { await press(Key(chars: "w", code: 13, mods: .command), w) } else { ws[1]()?.performClose(nil) }
         ws[0]()?.performClose(nil)
-        check(await until(3) { ws.allSatisfy { $0() == nil } } && Inspect.windows.isEmpty, "closed (\(byKey ? "⌘W" : "not key: close button"), close button), both are freed")
+        let freed = await until(3) { ws.allSatisfy { $0() == nil } } && Inspect.windows.isEmpty
+        let state = ws.map { $0().map { $0.isVisible ? "open" : "closed, still held" } ?? "freed" }
+        check(freed, "closed (\(byKey ? "⌘W" : "not key: close button"), close button), both are freed: \(state), \(Inspect.windows.count) in the set")
     }
 }
 #endif
