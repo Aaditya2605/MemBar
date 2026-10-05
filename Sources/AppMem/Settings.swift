@@ -92,6 +92,9 @@ struct SettingsMenu: View {
             Image(systemName: "gearshape")
         }
         .menuStyle(.button).buttonStyle(.borderless).menuIndicator(.hidden).fixedSize()
+        // ponytail: a Menu insets its label 3 pt; without this the gear sat 3 pt left of the Memory column's
+        // edge and 3 pt farther from the refresh icon than the flag is. A macOS without the inset moves it back.
+        .padding(.horizontal, -3)
         .help("Settings")
         .accessibilityLabel("Settings")
         .popover(isPresented: $legend, arrowEdge: .bottom) { BadgeLegend() }  // over the panel, not a window

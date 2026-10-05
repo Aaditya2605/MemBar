@@ -97,8 +97,8 @@ struct ProcList: View {
                     Text(name).lineLimit(1).truncationMode(.middle)
                     // Not wrapped, the name truncates instead. The group badge needs all of them paused.
                     if r.proc.stopped { Badge.paused.fixedSize() }
-                    // Next to "paused" only the icon, as in the group row: indented, the name has no room left.
-                    if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports, network: r.proc.stopped, limit: r.proc.stopped ? 0 : 2) }
+                    // Next to "paused" one port: indented, the name has little room left.
+                    if !r.proc.ports.isEmpty { PortChip(ports: r.proc.ports, limit: r.proc.stopped ? 1 : 2) }
                     Spacer()
                     Text(String(r.proc.pid)).monospacedDigit().fixedSize()
                     Text(cpu(r.proc.cpu)).monospacedDigit().frame(width: 40, alignment: .trailing)

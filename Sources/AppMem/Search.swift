@@ -179,6 +179,7 @@ struct SearchMenu: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
         }
         .menuStyle(.button).buttonStyle(.borderless).menuIndicator(.hidden).fixedSize()
+        .padding(.trailing, -3)  // the Menu's own inset, as the gear's: the two icons line up
         .help("Filters: leftover, orphan, paused, growing, idle, new, ignored, >1gb, <100mb, cpu>5, :3000, user:root, pid:123")
         .accessibilityLabel("Search filters")
     }

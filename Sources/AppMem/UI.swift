@@ -179,7 +179,7 @@ struct Panel: View {
                 column("App", .name).padding(.leading, 38)
                 Spacer(minLength: 4)
                 if model.mark != nil { column("Change", .change) }
-                column("Procs", .procs)
+                column("Procs", .procs, width: procsWidth)
                 column("CPU", .cpu, width: 40)
                 column("Memory", .memory, width: 62)
             }
@@ -204,14 +204,7 @@ struct Panel: View {
             .onCopyCommand(perform: copied.map { s in { [NSItemProvider(object: s as NSString)] } })  // nil: Copy is off
             .scrolls(to: nav)
             .overlay { if s.isEmpty && !typed.isEmpty { NoResults(typed: typed, q: q, marked: model.mark != nil) } }  // else no match looks like loading
-            let small = q.isEmpty ? listed.small : []
-            if !small.isEmpty {
-                Divider()
-                Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit().padding(.vertical, 4)
-                    .help("Hidden by Settings > Hide Groups Under 10 MB")
-            }
-            FreedLine()
+            Footer(small: q.isEmpty ? listed.small : [])  // Auto.swift
         }
         .frame(width: 400, height: 540)
         .onKeyPress(.escape, phases: [.down, .repeat], action: escape)
@@ -275,6 +268,7 @@ struct Row: View {
     var slot: Int?  // its color in the RAM bar (RAMBar.swift), for the 4 largest
     @ObservedObject var nav: Nav  // open or not, selected or not (Keys.swift)
     let stop: () -> Void
+    @State private var hover = false
     var expanded: Bool { nav.expanded.contains(g.id) }
 
     var body: some View {
@@ -301,33 +295,33 @@ struct Row: View {
                         } else if g.leftover {
                             Badge.leftover.help(flagHelp(g))
                         }
+                        // What happens now, then its age ("for 2 d", "idle 3 h"), then the rules the user set.
                         if let why = g.respawns {  // an icon: a second word would squeeze the name
                             Badge.respawns.help(why)
                         }
+                        if paused { Badge.paused.help("Paused: its processes do not run. Right-click to resume.") }
+                        if let growing { Badge.growing.help("Memory is growing: \(growing)") }
+                        UsageBadge(g: g)
                         if let quitIdle {
                             Badge.quitIdle.help(quitIdle + ". Right-click to change.")
                         }
-                        if paused { Badge.paused.help("Paused: its processes do not run. Right-click to resume.") }
-                        UsageBadge(g: g)
-                        if let growing { Badge.growing.help("Memory is growing: \(growing)") }
                         LimitBell(g: g)
                         RuleBadges(g: g)  // Rules.swift
                         // Only where a port tells what the group is (a dev server, a leftover's or orphan's
                         // socket); an app's own ports are noise here, and stay in its lines, the search and VoiceOver.
-                        // Gone before the name truncates: all ports, one, the icon, then nothing. Drop order: ports
-                        // (-2), then bell and rules (-1.5), then the age (-1): how stale a leftover is matters more to Stop.
+                        // Gone before the name truncates: all ports, one, then nothing (a bare icon told nothing). Drop
+                        // order: ports (-2), then bell and rules (-1.5), then the age (-1): how stale a leftover is matters more to Stop.
                         if showsPorts(g) {
                             ViewThatFits(in: .horizontal) {
-                                PortChip(ports: g.ports, network: true)
-                                PortChip(ports: g.ports, network: true, limit: 1)
-                                PortChip(ports: g.ports, network: true, limit: 0)
+                                PortChip(ports: g.ports)
+                                PortChip(ports: g.ports, limit: 1)
                                 Color.clear.frame(width: 0, height: 0)
                             }
                             .layoutPriority(-2)
                         }
                         // ponytail: on a leftover or orphan row Stop sits between the change and "Procs", so the
                         // change is a Stop width left of its header; a fixed Stop slot would take it from every name.
-                        Spacer(minLength: 4).overlay(alignment: .trailing) { ChangeText(label: change, procs: g.procs.count) }
+                        Spacer(minLength: 4).overlay(alignment: .trailing) { ChangeText(label: change) }
                     }
                     .padding(.leading, 10).padding(.trailing, 6).padding(.top, 3).padding(.bottom, isOpen ? 0 : 3)
                     .contentShape(Rectangle())
@@ -352,8 +346,10 @@ struct Row: View {
                 Button(action: open) {
                     HStack(spacing: 6) {
                         // Here and on Stop, not on the whole row: an outer .help hides each .help inside it.
-                        // Fixed: a count squeezed by Stop wrapped to two lines ("1" over "9").
-                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit().fixedSize().help(others)
+                        // Fixed: a count squeezed by Stop wrapped to two lines ("1" over "9"). A column as wide
+                        // as its header: the Stop buttons line up from row to row, and the change ends where "Change" does.
+                        Text("\(g.procs.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit().fixedSize()
+                            .frame(minWidth: procsWidth, alignment: .trailing).help(others)
                         Text(cpu(g.cpu)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             .frame(width: 40, alignment: .trailing)
                             .help(cpuHelp(g))  // power and disk too (Energy.swift)
@@ -366,7 +362,8 @@ struct Row: View {
                 .accessibilityHidden(true)
             }
             .contextMenu { GroupMenu(g: g) }
-            .highlight(picked, lead: -4, trail: -4, top: -2, bottom: isOpen ? 1 : -2)  // where it was with the margins outside
+            .onHover { hover = $0 }
+            .highlight(picked, hover: hover, lead: -4, trail: -4, top: -2, bottom: isOpen ? 1 : -2)  // where it was with the margins outside
             if isOpen {
                 VStack(alignment: .leading, spacing: 2) {
                     if points.count >= 3 { Sparkline(points: points, growing: growing != nil).equatable().padding(.leading, 38) }
@@ -388,6 +385,9 @@ struct Row: View {
         }
     }
 }
+
+/// The Procs column: "Procs" in .caption, and room for a 4-digit count.
+let procsWidth: CGFloat = 30
 
 /// The row's port chip: on a leftover, an orphan, or a command-line group (no .app, not
 /// macOS), where a port tells what it is (`node` on :3000). An app's own ports would be noise.

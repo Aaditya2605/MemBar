@@ -118,7 +118,8 @@ struct MarkLine: View {
             HStack(spacing: 4) {
                 Text(markSummary(m, ram: model.sys.ram, d)).lineLimit(1).help(markHelp(m, d))
                 Button { model.clearMark() } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).padding(.horizontal, 3).contentShape(Rectangle())
+                    // Tertiary, as the insight's ✕: a quiet way out, not the line's content.
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary).padding(.horizontal, 3).contentShape(Rectangle())
                 }
                     .buttonStyle(.borderless)
                     .help("Clear the mark")
@@ -133,24 +134,16 @@ struct MarkLine: View {
 /// the name or moves a column, and where it does not fit it is not shown.
 struct ChangeText: View {
     let label: (text: String, color: Color, help: String)?
-    let procs: Int
 
     var body: some View {
-        if let label {
-            // The header's "Change" ends where "Procs" starts; here the count is narrower than "Procs".
-            let pad = max(0, captionWidth("Procs") - captionWidth(String(procs)))
+        if let label {  // the Procs column has the header's width (procsWidth): it ends where "Change" does
             ViewThatFits(in: .horizontal) {
-                Text(label.text).foregroundStyle(label.color).help(label.help).padding(.trailing, pad)
+                Text(label.text).foregroundStyle(label.color).help(label.help)
                 Color.clear.frame(width: 0, height: 0)
             }
             .font(.caption).monospacedDigit()
         }
     }
-}
-
-/// Width in SwiftUI's .caption (the caption1 text style), to line up with text in another view.
-private func captionWidth(_ s: String) -> CGFloat {
-    (s as NSString).size(withAttributes: [.font: NSFont.preferredFont(forTextStyle: .caption1)]).width
 }
 
 #if DEBUG

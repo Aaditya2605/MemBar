@@ -20,7 +20,7 @@ enum Badge {
     /// Restart When Above, Pause When in Background: ruleNotes' symbols.
     static func rule(_ symbol: String) -> some View { Image(systemName: symbol).flag() }
     /// "for 2 d", "idle 3 h": a note, quieter than a flag.
-    static func usage(_ s: String) -> some View { Text(s).font(.caption2).foregroundStyle(.secondary) }
+    static func usage(_ s: String) -> some View { Text(s).font(.caption2).monospacedDigit().foregroundStyle(.secondary) }
 }
 
 /// Gear menu > What the Badges Mean: a popover over the panel with each badge and its meaning,
@@ -48,7 +48,7 @@ struct BadgeLegend: View {
             line(Badge.rule(rules[0].symbol).accessibilityLabel("Restart"), "Restart When Above: it restarts above its limit when unused.")
             line(HStack(spacing: 4) { Badge.rule(rules[1].symbol); Badge.rule(pausedNow) }.accessibilityElement(children: .ignore).accessibilityLabel("Pause"),
                  "Pause When in Background: paused after 5 min in the background. Filled: paused now, its jobs still run.")
-            line(PortChip(ports: [3000], network: true), "The TCP ports it listens on (a dev server).")
+            line(PortChip(ports: [3000]), "The TCP ports it listens on (a dev server).")
             line(Text(fmt(1 << 30)).font(.caption).monospacedDigit().slotDot(0).padding(.leading, 8), "Its color in the RAM bar: one of the \(ramSlots) largest.")
             header("In the menu bar")
             dot(.normal, waste: 1, "Yellow", "Leftovers found")
@@ -74,7 +74,7 @@ struct BadgeLegend: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// As ChangeText draws it, without its padding to the Procs column.
+    /// As ChangeText draws it.
     func change(_ l: (text: String, color: Color, help: String)) -> some View {
         Text(l.text).font(.caption).monospacedDigit().foregroundStyle(l.color)
     }

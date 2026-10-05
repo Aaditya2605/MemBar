@@ -198,18 +198,29 @@ struct QuitIdleMenu: View {
     }
 }
 
-/// Panel footer "Freed 12.40 GB since Oct 3", once a stop freed anything.
-struct FreedLine: View {
+/// The panel's one footer line: "23 small groups, 158 MB · Freed 12.40 GB since Oct 3". Each part
+/// only when it has something: the groups that Settings hides, what the stops freed. One line, not two.
+struct Footer: View {
+    let small: [Group]  // hidden by Settings > Hide Groups Under 10 MB
     @AppStorage("freedBytes") private var bytes = 0
     @AppStorage("freedSince") private var since = 0.0
 
     var body: some View {
-        if bytes > 0 {
+        if !small.isEmpty || bytes > 0 {
             let d = Date(timeIntervalSince1970: since), day = Date.FormatStyle.dateTime.month(.abbreviated).day()
             Divider()
-            Text("Freed \(fmt(Int64(bytes))) since \(d.formatted(Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? day : day.year()))")
-                .font(.caption).foregroundStyle(.secondary).monospacedDigit().padding(.vertical, 4)
-                .help("Memory of the groups that Stop, Stop All, Auto-Stop, Quit When Idle and Restart When Above ended, as it was at each stop. Settings > Recent Actions lists them.")
+            HStack(spacing: 4) {
+                if !small.isEmpty {
+                    Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")
+                        .help("Hidden by Settings > Hide Groups Under 10 MB")
+                }
+                if !small.isEmpty && bytes > 0 { Text("·").accessibilityHidden(true) }
+                if bytes > 0 {
+                    Text("Freed \(fmt(Int64(bytes))) since \(d.formatted(Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? day : day.year()))")
+                        .help("Memory of the groups that Stop, Stop All, Auto-Stop, Quit When Idle and Restart When Above ended, as it was at each stop. Settings > Recent Actions lists them.")
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).padding(.vertical, 4)
         }
     }
 }

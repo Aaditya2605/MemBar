@@ -121,11 +121,12 @@ extension Panel {
 extension View {
     /// The selected line: the accent color at low opacity, reaching past the line by `lead`,
     /// `trail`, `top` and `bottom` points (negative: inside it), so every line's highlight
-    /// spans the same width: a process line's starts where its group's does.
-    func highlight(_ on: Bool, lead: CGFloat = 6, trail: CGFloat = 6, top: CGFloat = 1, bottom: CGFloat = 1) -> some View {
+    /// spans the same width: a process line's starts where its group's does. `hover`: a faint
+    /// gray, at once, so the pointer shows that the whole row is the target.
+    func highlight(_ on: Bool, hover: Bool = false, lead: CGFloat = 6, trail: CGFloat = 6, top: CGFloat = 1, bottom: CGFloat = 1) -> some View {
         background {
-            if on {
-                RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.2))
+            if on || hover {
+                RoundedRectangle(cornerRadius: 5).fill(on ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.06))
                     .padding(.leading, -lead).padding(.trailing, -trail).padding(.top, -top).padding(.bottom, -bottom)
             }
         }
