@@ -78,8 +78,8 @@ struct SettingsMenu: View {
             }
             DisabledAgentsMenu(agents: agents)  // Agents.swift
             AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
+            Divider()  // the numbers: today's peaks, and what to do with them now
             PeaksMenu(peaks: peaks)  // Day.swift
-            Divider()  // what to do with the numbers now
             Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
             Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
             Button("Save Report…") { (NSApp.delegate as? Delegate)?.model.saveReport() }  // Markdown, CSV or JSON (Export.swift)

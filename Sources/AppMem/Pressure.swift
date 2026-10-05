@@ -9,7 +9,9 @@ import SwiftUI
 enum Pressure: Int32 {
     case normal = 1, warning = 2, critical = 4
     var label: String { switch self { case .normal: "Normal"; case .warning: "Warning"; case .critical: "Critical" } }
-    var color: Color { switch self { case .normal: .green; case .warning: .yellow; case .critical: .red } }  // as Activity Monitor
+    var color: Color { switch self { case .normal: .green; case .warning: .orange; case .critical: .red } }
+    // Orange, not Activity Monitor's yellow: as the menu bar dot and graph, where yellow means leftovers.
+    // ponytail: leftovers are orange in the list and yellow in the menu bar; one color would hide Warning there.
 }
 
 struct SysMem {
@@ -43,9 +45,9 @@ func menuState(_ p: Pressure, waste: Int64) -> (dot: NSColor?, desc: String, tip
     return (dot, desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "AppMem: no leftovers" : tip.joined(separator: "\n"))
 }
 
-/// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot colored like
-/// Activity Monitor's pressure graph. One line for both: a second bar would weigh the header
-/// down. A dot, not colored words: green and yellow text is too faint on the light panel.
+/// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot colored as the
+/// menu bar's. One line for both: a second bar would weigh the header down. A dot, not
+/// colored words: green and orange text is too faint on the light panel.
 /// A click shows the breakdown.
 struct PressureBar: View {
     let sys: SysMem

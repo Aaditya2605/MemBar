@@ -47,7 +47,7 @@ struct BadgeLegend: View {
             line(Badge.quitIdle, "Quit When Idle: AppMem asks it to quit when unused.")
             line(Badge.rule(rules[0].symbol).accessibilityLabel("Restart"), "Restart When Above: it restarts above its limit when unused.")
             line(HStack(spacing: 4) { Badge.rule(rules[1].symbol); Badge.rule(pausedNow) }.accessibilityElement(children: .ignore).accessibilityLabel("Pause"),
-                 "Pause When in Background: paused after 5 min in the background. Filled: paused now.")
+                 "Pause When in Background: paused after 5 min in the background. Filled: paused now, its jobs still run.")
             line(PortChip(ports: [3000], network: true), "The TCP ports it listens on (a dev server).")
             line(Text(fmt(1 << 30)).font(.caption).monospacedDigit().slotDot(0).padding(.leading, 8), "Its color in the RAM bar: one of the \(ramSlots) largest.")
             header("In the menu bar")

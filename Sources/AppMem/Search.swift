@@ -22,10 +22,11 @@ struct Search {
     var tokens: [Token] = [], text = ""
     var isEmpty: Bool { tokens.isEmpty && text.isEmpty }
 
-    /// Any case. A word that only looks like a token (">1tb", "cpu>x", "pid:abc") is text.
+    /// Any case. A word that only looks like a token (">1tb", "cpu>x", "pid:abc") is text. A bare prefix
+    /// (the filter menu's "port:", "pid:", or ":" typed before 3000) waits for its number, not "No Results".
     init(_ query: String) {
         var words: [Substring] = []
-        for w in query.lowercased().split(whereSeparator: \.isWhitespace) {
+        for w in query.lowercased().split(whereSeparator: \.isWhitespace) where ![":", "port:", "pid:"].contains(w) {
             if let t = Token(w) { tokens.append(t) } else { words.append(w) }
         }
         text = words.joined(separator: " ")

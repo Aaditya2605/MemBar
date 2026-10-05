@@ -266,7 +266,7 @@ struct LimitBell: View {
                 Badge.bell(on: on && !g.ignored).help(help).accessibilityLabel(help)  // Legend.swift
                 Color.clear.frame(width: 0, height: 0)
             }
-            .layoutPriority(-1)
+            .layoutPriority(-1.5)  // after the age badge (-1): a tie would let the bell take the age's room
         }
     }
 }

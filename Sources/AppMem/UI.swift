@@ -315,8 +315,8 @@ struct Row: View {
                         RuleBadges(g: g)  // Rules.swift
                         // Only where a port tells what the group is (a dev server, a leftover's or orphan's
                         // socket); an app's own ports are noise here, and stay in its lines, the search and VoiceOver.
-                        // Gone before the name truncates: all ports, one, the icon, then nothing. After the
-                        // age badge (-1): how stale a leftover is matters more to Stop than its socket.
+                        // Gone before the name truncates: all ports, one, the icon, then nothing. Drop order: ports
+                        // (-2), then bell and rules (-1.5), then the age (-1): how stale a leftover is matters more to Stop.
                         if showsPorts(g) {
                             ViewThatFits(in: .horizontal) {
                                 PortChip(ports: g.ports, network: true)

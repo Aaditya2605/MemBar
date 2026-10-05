@@ -474,7 +474,7 @@ func selfTest() {
     let sm = SysMem(vm, page: 16384, swap: 7, level: 4, free: 30)
     precondition(sm.app == 90 * 16384 && sm.ram == 115 * 16384 && sm.cached == 40 * 16384 && sm.swap == 7)
     precondition(sm.pressure == .critical && sm.usedPct == 70 && SysMem().usedPct == 0 && SysMem(level: 3).pressure == .normal)
-    precondition(Pressure(rawValue: 2)?.label == "Warning" && Pressure.warning.color == .yellow && Pressure.critical.color == .red)
+    precondition(Pressure(rawValue: 2)?.label == "Warning" && Pressure.warning.color == .orange && Pressure.critical.color == .red)
     precondition(menuState(.critical, waste: 1).dot == .systemRed && menuState(.warning, waste: 1).dot == .systemOrange)
     precondition(menuState(.normal, waste: 1).dot == .systemYellow && menuState(.normal, waste: 0).dot == nil)
     precondition(menuState(.normal, waste: 0).desc == "AppMem" && menuState(.normal, waste: 0).tip == "AppMem: no leftovers")
@@ -953,6 +953,7 @@ func selfTest() {
         // Look like tokens, are text: no unit, another unit, inf and nan (Int64() traps), no number, too big a port.
         let odd = Search(">1000 >1tb >gb >infgb >nangb cpu>x cpu>inf pid:abc port:99999 :x user: foo:bar leftovers")
         precondition(odd.tokens.isEmpty && odd.text == ">1000 >1tb >gb >infgb >nangb cpu>x cpu>inf pid:abc port:99999 :x user: foo:bar leftovers")
+        precondition(Search("port:").isEmpty && Search("leftover pid: :").tokens == [.leftover] && Search("leftover pid: :").text.isEmpty)
         precondition(Search("google   chrome >1gb").text == "google chrome")  // words joined by one space, as a name has them
         let cursor = pg["Cursor"]!, claude = pg["Claude"]!  // leftover 800 MB, PIDs 10 11, :3000 on 11; open 1300 MB, :3000 :9229 on 20
         precondition(matches(.leftover, cursor) && !matches(.leftover, claude) && !matches(.orphan, cursor))

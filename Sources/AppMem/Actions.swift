@@ -136,7 +136,7 @@ struct GroupMenu: View {
         Button("Force Quit \(g.name)…") { if Actions.confirmForceQuit(g.name) { Actions.quit(g, app, force: true) } }
             .disabled(!a.quit)
         if let app, a.restart { Button("Restart \(g.name)") { Actions.restart(g, app) } }
-        if a.restart && !g.leftover { QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app
+        if a.restart && !g.leftover { Divider(); QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app; divider: rules apart from act-now items
         if let app, a.restart && !g.leftover { RuleMenus(g: g, app: app, signals: a.pause || a.resume) }  // Rules.swift
         Divider()
         if a.resume { Button("Resume") { Actions.send(SIGCONT, g.procs.filter(\.stopped), in: g) } }

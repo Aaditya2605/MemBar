@@ -188,7 +188,8 @@ enum Rules {
     static func notes(_ g: Group) -> [(symbol: String, help: String)] {
         let mb = restartRule(g.name), pause = UserDefaults.standard.pauseInBackground[g.name] == true
         guard mb != nil || pause, !g.leftover, !g.ignored, Actions.runningApp(g) != nil else { return [] }
-        return ruleNotes(restart: mb, pause: pause, paused: pauses.paused[g.name] != nil)
+        // Filled only while its jobs run: all paused, the row's "paused" word (which never drops) tells it once.
+        return ruleNotes(restart: mb, pause: pause, paused: pauses.paused[g.name] != nil && !isPaused(g))
     }
 
     /// For VoiceOver on the row.
@@ -244,7 +245,7 @@ struct RuleBadges: View {
                 }
                 Color.clear.frame(width: 0, height: 0)
             }
-            .layoutPriority(-1)
+            .layoutPriority(-1.5)  // as the limit bell: after the age badge, before the ports
         }
     }
 }
