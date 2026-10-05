@@ -164,7 +164,6 @@ struct Panel: View {
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 MarkLine(model: model)
-                IdleLine(groups: model.groups)
                 PressureBar(sys: model.sys, groups: model.groups, slots: model.slots).font(.caption).foregroundStyle(.secondary)
                 TextField("Search or filter: leftover, >1gb, :3000", text: $query)
                     .textFieldStyle(.roundedBorder)

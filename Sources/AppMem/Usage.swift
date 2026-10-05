@@ -130,15 +130,3 @@ struct UsageBadge: View {
         }
     }
 }
-
-/// Header line "Idle apps use 3.20 GB", when there are idle apps.
-struct IdleLine: View {
-    let groups: [Group]
-    var body: some View {
-        let mem = groups.filter { Usage.idle($0) != nil }.reduce(0) { $0 + $1.mem }
-        if mem > 0 {
-            Text("Idle apps use \(fmt(mem))").font(.caption).foregroundStyle(.secondary)
-                .help("Open apps with 500 MB or more, not used for 2 hours or more")
-        }
-    }
-}
