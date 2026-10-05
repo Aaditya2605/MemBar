@@ -177,15 +177,19 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
                 // Rescan: what came while macOS asked alerts now, not with a scan up to 60 s later.
                 if ok { (NSApp.delegate as? Delegate)?.model.refresh(); return }
                 UserDefaults.standard.set(false, forKey: key)
-                let a = NSAlert()
-                a.messageText = "Notifications are off for AppMem"
-                a.informativeText = "To allow them, open System Settings > Notifications > AppMem and turn on Allow Notifications."
-                a.addButton(withTitle: "Open System Settings")
-                a.addButton(withTitle: "Cancel")
-                NSApp.activate(ignoringOtherApps: true)
-                if a.runModal() == .alertFirstButtonReturn, let id = Bundle.main.bundleIdentifier,
-                   let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
-                    NSWorkspace.shared.open(url)
+                // perform, not inline: a modal loop inside a main-queue block holds back every other
+                // main-queue job (scan results, SIGTERM, the reopen after a quit) until it closes.
+                RunLoop.main.perform {
+                    let a = NSAlert()
+                    a.messageText = "Notifications are off for AppMem"
+                    a.informativeText = "To allow them, open System Settings > Notifications > AppMem and turn on Allow Notifications."
+                    a.addButton(withTitle: "Open System Settings")
+                    a.addButton(withTitle: "Cancel")
+                    NSApp.activate(ignoringOtherApps: true)
+                    if a.runModal() == .alertFirstButtonReturn, let id = Bundle.main.bundleIdentifier,
+                       let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
             }
         }

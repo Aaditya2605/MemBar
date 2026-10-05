@@ -115,12 +115,13 @@ enum Agents {
                 if disabled, error == nil { model?.forget(job: label) }  // its respawn mark goes, and with it this menu item
                 model?.refresh()  // its processes are gone, or back
                 guard let error else { return }
-                let a = NSAlert()
-                a.messageText = "Could not \(disabled ? "disable" : "enable") \(label)"
-                a.informativeText = error
-                NSApp.activate(ignoringOtherApps: true)  // the gear menu's undo: the panel may be closed by now
-                // ponytail: modal, so main-queue jobs wait until it closes (as Save Report's); a failure is rare.
-                a.runModal()
+                RunLoop.main.perform {  // not inline: a modal loop in a main-queue block holds back the main queue (see Alerts.allow)
+                    let a = NSAlert()
+                    a.messageText = "Could not \(disabled ? "disable" : "enable") \(label)"
+                    a.informativeText = error
+                    NSApp.activate(ignoringOtherApps: true)  // the gear menu's undo: the panel may be closed by now
+                    a.runModal()
+                }
             }
         }
     }
