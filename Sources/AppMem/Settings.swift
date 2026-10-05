@@ -1,0 +1,117 @@
+import AppKit
+import ServiceManagement
+import SwiftUI
+
+// The gear menu in the panel header, and the rules it feeds. UserDefaults keys:
+// "refreshEvery" (Int, seconds), "hideSmall", "showMacOS" (Bool), and "ignored"
+// ([String], group names; the right-click menu on a row adds to it).
+
+/// Seconds between scans while the panel is open. Checked: `defaults write` can
+/// store anything, and a 0 s timer would spin the CPU.
+func refreshSeconds(_ stored: Int) -> TimeInterval { [2, 3, 5].contains(stored) ? TimeInterval(stored) : 3 }
+
+/// An ignored app is never a leftover: no badge, no Stop, not in the waste total
+/// or the menu bar dot. Exact names, as the right-click menu writes them.
+/// `ignored` marks the ones it unflags: the app is not open, so it is not idle either.
+func ignoring(_ groups: [Group], _ ignored: [String]) -> [Group] {
+    groups.map { g in
+        var g = g
+        if g.leftover && ignored.contains(g.name) { g.leftover = false; g.ignored = true; g.respawns = nil }
+        return g
+    }
+}
+
+/// The groups that the plain list shows, and the small ones it hides (for the
+/// footer). Leftovers always show: the waste total and the menu bar dot count them.
+/// So do groups with a paused process: the row's right-click menu is where it resumes.
+func visible(_ groups: [Group], hideSmall: Bool, showMacOS: Bool) -> (shown: [Group], small: [Group]) {
+    let gs = showMacOS ? groups : groups.filter { $0.name != "macOS" }
+    func small(_ g: Group) -> Bool {  // 10 MB, as the menu says
+        hideSmall && !g.leftover && !g.procs.contains(where: \.stopped) && g.mem < 10 << 20
+    }
+    return (gs.filter { !small($0) }, gs.filter(small))
+}
+
+// Same names as the keys: UserDefaults reports a KVO change under the key's name,
+// so Model can observe(\.ignored).
+extension UserDefaults {
+    @objc dynamic var ignored: [String] { stringArray(forKey: "ignored") ?? [] }
+    @objc dynamic var refreshEvery: Int { integer(forKey: "refreshEvery") }
+}
+
+struct SettingsMenu: View {
+    @AppStorage("refreshEvery") private var refreshEvery = 3
+    @AppStorage("hideSmall") private var hideSmall = false
+    @AppStorage("showMacOS") private var showMacOS = true
+    @AppStorage("countOrphans") private var countOrphans = false
+    // Read again each time a menu opens: System Settings can turn the login item
+    // off, and the right-click menu writes the list. SwiftUI makes the menu items
+    // from the last body, so a Binding that reads them live would show old values.
+    @State private var login = false
+    @State private var ignored: [String] = []
+    @State private var recent: [Freed.Entry] = []  // Stop and the auto rules write the log
+    @State private var peaks: [Peak] = []  // each scan adds to the history (Day.swift)
+    @State private var legend = false  // What the Badges Mean (Legend.swift)
+    @State private var agents: [String: String] = [:]  // Disable Launch Agent… writes the list (Agents.swift)
+
+    var body: some View {
+        Menu {
+            Toggle("Launch at Login", isOn: Binding(get: { login }, set: setLogin))
+            Picker("Refresh Every", selection: $refreshEvery) {
+                ForEach([2, 3, 5], id: \.self) { Text("\($0) s") }
+            }
+            MenuBarShowsPicker()  // MenuBar.swift
+            AlertsMenu()  // Alerts.swift
+            Divider()
+            Toggle("Hide Groups Under 10 MB", isOn: $hideSmall)
+            Toggle("Show macOS Group", isOn: $showMacOS)
+            Divider()  // what counts as a leftover, and what happens to them
+            Toggle("Count Orphans as Leftovers", isOn: $countOrphans)
+            Menu("Never Flagged") {  // orphans too, and they are not apps
+                if ignored.isEmpty { Text("None") }
+                // Checked = ignored; choosing one takes it off the list.
+                ForEach(ignored, id: \.self) { name in
+                    Toggle(name, isOn: Binding(get: { true }, set: { _ in
+                        UserDefaults.standard.set(UserDefaults.standard.ignored.filter { $0 != name }, forKey: "ignored")
+                    }))
+                }
+            }
+            DisabledAgentsMenu(agents: agents)  // Agents.swift
+            AutoMenus(recent: recent)  // Auto-Stop Leftovers, Recent Actions
+            Divider()  // the numbers: today's peaks, and what to do with them now
+            PeaksMenu(peaks: peaks)  // Day.swift
+            Button("Mark Memory Now") { (NSApp.delegate as? Delegate)?.model.markNow() }  // the panel's model (Mark.swift)
+            Button("Copy Report") { (NSApp.delegate as? Delegate)?.model.copyReport() }  // Markdown, see report()
+            Button("Save Report…") { (NSApp.delegate as? Delegate)?.model.saveReport() }  // Markdown, CSV or JSON (Export.swift)
+            Divider()
+            // Async: a popover shown while the menu closes can close at once.
+            Button("What the Badges Mean") { DispatchQueue.main.async { legend = true } }
+            Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
+            Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        } label: {
+            Image(systemName: "gearshape")
+        }
+        .menuStyle(.button).buttonStyle(.borderless).menuIndicator(.hidden).fixedSize()
+        // ponytail: a Menu insets its label 3 pt; without this the gear sat 3 pt left of the Memory column's
+        // edge and 3 pt farther from the refresh icon than the flag is. A macOS without the inset moves it back.
+        .padding(.horizontal, -3)
+        .help("Settings")
+        .accessibilityLabel("Settings")
+        .popover(isPresented: $legend, arrowEdge: .bottom) { BadgeLegend() }  // over the panel, not a window
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+            login = SMAppService.mainApp.status == .enabled
+            ignored = UserDefaults.standard.ignored
+            recent = Freed.log
+            peaks = (NSApp.delegate as? Delegate)?.model.history.peaksToday() ?? []
+            agents = UserDefaults.standard.disabledAgents
+        }
+        // SwiftUI fills the menu only when it first opens, so until then its ⌘Q
+        // does nothing. A hidden button still takes the shortcut.
+        .background { Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q").hidden() }
+    }
+
+    func setLogin(_ on: Bool) {
+        do { try on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() } catch { NSAlert(error: error).runModal() }
+        login = SMAppService.mainApp.status == .enabled
+    }
+}

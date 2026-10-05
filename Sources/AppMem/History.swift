@@ -1,0 +1,185 @@
+import Charts
+import SwiftUI
+
+// RAM history for the last hour: the "growing" badge, the sparkline of an expanded
+// group and the Details chart. No header chart: total RAM used stays flat on macOS (it
+// compresses and swaps first), and it cannot say which app to act on. Older samples fold into 24 h points; Day.swift saves
+// both to disk and loads them at launch.
+
+struct Sample {
+    let at: Date
+    let ram: Int64
+    let groups: [String: Int64]  // group id → memory, only for groups of 50 MB or more (see add)
+}
+
+struct History {
+    private(set) var samples: [Sample] = []
+    private(set) var older: [Sample] = []  // before the last hour, up to 24 h: one point each 5 min (fold)
+    static let cap = 240  // 60 min at one sample each 15 s
+
+    init(samples: [Sample] = [], older: [Sample] = []) { self.samples = samples; self.older = older }  // Day.swift loads one
+
+    /// One sample per scan, but at most one each 15 s: the open panel scans every 2-5 s.
+    /// `allUsers`: the scan has fresh memory of other users' processes (top runs only with
+    /// the panel open). Without it they count 0 or an old value, so a group with one gets
+    /// no point: its line would drop, then jump when the panel opens.
+    mutating func add(_ groups: [Group], sys: SysMem, allUsers: Bool = true, at now: Date = Date()) {
+        // ponytail: wall clock, so a clock set back stops new samples until it catches up.
+        if let last = samples.last, now.timeIntervalSince(last.at) < 15 { return }
+        let me = getuid(), big = groups.filter { $0.mem >= 50 << 20 && (allUsers || $0.procs.allSatisfy { $0.uid == me }) }
+        samples.append(Sample(at: now, ram: sys.ram,
+                              groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
+        // Older than an hour, or past the cap: into the 24 h points. Oldest first: add only appends later times.
+        let old = max(samples.prefix { now.timeIntervalSince($0.at) > 3600 }.count, samples.count - Self.cap)
+        for s in samples.prefix(old) { fold(&older, s) }
+        samples.removeFirst(old)
+        // Each add, not only when a sample folds: after a restart the last hour is short, nothing
+        // folds for up to an hour, and the "24 h" Details chart would grow to 25 h.
+        older.removeFirst(older.prefix { now.timeIntervalSince($0.at) > 86400 }.count)
+    }
+
+    /// One group's memory over time; it has no point when it was below 50 MB or not running.
+    func points(_ id: String) -> [(at: Date, mem: Int64)] {
+        samples.compactMap { s in s.groups[id].map { (s.at, $0) } }
+    }
+}
+
+/// The growth when memory rose by 25% and 300 MB or more across 15 min or more, and
+/// mostly rose: a least-squares line fits well (R² >= 0.8). A spike or a single step
+/// up fits a line badly (R² <= 0.75); noise around a climb fits it well.
+/// The line is by sample number, not by time: a gap (the app quit, the Mac asleep, the
+/// group under 50 MB) or denser samples at both ends (panel open) let two flat levels
+/// fit a time line well. By number a step stays at R² <= 0.75, with 10 samples or more
+/// (with 4 it is 0.8).
+/// ponytail: one line over the whole history, so a leak that starts after a long flat
+/// stretch shows only when it covers about half of it; fit the newest 20 min too if
+/// that is too late.
+/// ponytail: an open-panel sample (each 15 s) counts as much as a closed one (each 60 s),
+/// so with both in the history the rise is off by up to about 20%.
+func isGrowing(_ points: [(at: Date, mem: Int64)]) -> Int64? {
+    guard points.count >= 10, let t0 = points.first?.at, let t1 = points.last?.at, t1.timeIntervalSince(t0) >= 15 * 60 else { return nil }
+    let xs = points.indices.map(Double.init), ys = points.map { Double($0.mem) }
+    let n = Double(points.count), mx = xs.reduce(0, +) / n, my = ys.reduce(0, +) / n
+    var sxy = 0.0, sxx = 0.0, syy = 0.0
+    for (x, y) in zip(xs, ys) { sxy += (x - mx) * (y - my); sxx += (x - mx) * (x - mx); syy += (y - my) * (y - my) }
+    guard syy > 0 else { return nil }  // flat
+    let slope = sxy / sxx, rise = slope * (n - 1), start = my - slope * mx
+    guard sxy * sxy / (sxx * syy) >= 0.8, rise >= 300 * 1048576, rise >= 0.25 * start else { return nil }
+    return Int64(rise)
+}
+
+/// "+600 MB in 30 min" for a group that grows, else nil.
+func growthText(_ points: [(at: Date, mem: Int64)]) -> String? {
+    guard let g = isGrowing(points), let a = points.first?.at, let b = points.last?.at else { return nil }
+    return "+\(fmt(g)) in \(mins(b.timeIntervalSince(a)))"
+}
+
+func mins(_ t: TimeInterval) -> String { "\(max(1, Int((t / 60).rounded()))) min" }
+
+/// Expanded group: its memory history, from 0 so that a leak looks steep and noise flat.
+struct Sparkline: View {
+    let points: [(at: Date, mem: Int64)]
+    let growing: Bool
+
+    var body: some View {
+        let mem = points.map { $0.mem }, top = mem.max() ?? 0, lo = fmt(mem.min() ?? 0), hi = fmt(top)
+        let text = "\(mins(points.last!.at.timeIntervalSince(points.first!.at))): \(lo == hi ? hi : "\(lo) to \(hi)")"
+        let color = growing ? Color.red : Color.secondary
+        HStack(spacing: 6) {
+            Chart(points.indices, id: \.self) { i in
+                AreaMark(x: .value("Time", points[i].at), y: .value("Memory", Double(points[i].mem)))
+                    .foregroundStyle(color.opacity(growing ? 0.15 : 0.08))  // flat is the usual case: a line, not a gray bar
+                LineMark(x: .value("Time", points[i].at), y: .value("Memory", Double(points[i].mem)))
+                    .foregroundStyle(color).lineStyle(StrokeStyle(lineWidth: 1))
+            }
+            .chartXAxis(.hidden).chartYAxis(.hidden)
+            .chartYScale(domain: 0...Double(max(top, 1)) * 1.15)  // headroom: a flat line is not an underline
+            .frame(width: 150, height: 16)  // fixed, so the sparklines line up; 150 leaves room for "10.24 GB to 12.50 GB"
+            Text(text).font(.caption2).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Memory in the last \(text)")
+    }
+}
+
+// A Row re-renders on each arrow key (it observes Nav) and gets a new points array; tuples are not
+// Equatable, so without this each expanded row would build its Chart again (about 7 ms at 240 points).
+extension Sparkline: Equatable {
+    static func == (a: Self, b: Self) -> Bool { a.growing == b.growing && a.points.elementsEqual(b.points) { $0 == $1 } }
+}
+
+#if DEBUG
+extension History {
+    /// `HISTORY=1 AppMem --snapshot ...`: an hour of made-up samples around the live
+    /// numbers, so the badge, sparklines and Details chart show without an hour of waiting.
+    /// The largest group grows from half its size, so it gets the badge.
+    static func demo(_ groups: [Group], sys: SysMem) -> History {
+        var h = History()
+        let now = Date(), big = groups.max { $0.mem < $1.mem }?.id
+        for i in 0..<cap {
+            let f = Double(i) / Double(cap - 1), wave = sin(Double(i) / 7)
+            let gs = groups.filter { $0.mem >= 50 << 20 }.map { g in
+                (g.id, g.id == big ? Int64(Double(g.mem) * (0.5 + 0.5 * f + 0.02 * wave)) : g.mem)
+            }
+            h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15, ram: Int64(Double(sys.ram) * (0.9 + 0.1 * f + 0.02 * wave)),
+                                    groups: Dictionary(uniqueKeysWithValues: gs)))
+        }
+        for i in 0..<276 {  // the 23 h before, one point each 5 min: the Details 24 h chart
+            let wave = sin(Double(i) / 24)
+            let gs = groups.map { ($0.id, Int64(Double($0.mem) * ($0.id == big ? 0.5 : 1) * (0.85 + 0.1 * wave))) }
+            h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300, ram: Int64(Double(sys.ram) * (0.8 + 0.1 * wave)),
+                                  groups: topGroups(Dictionary(uniqueKeysWithValues: gs))))
+        }
+        return h
+    }
+}
+#endif
+
+/// `AppMem --test`: the history parts of the self-check.
+func historySelfTest() {
+    let t0 = Date(timeIntervalSince1970: 0), mb: Int64 = 1 << 20
+    func series(_ minutes: Int, _ f: (Int) -> Double) -> [(at: Date, mem: Int64)] {
+        (0...minutes * 4).map { i in (t0 + Double(i) * 15, Int64(f(i) * Double(mb))) }  // one each 15 s
+    }
+    precondition(abs(isGrowing(series(30) { 1000 + Double($0) * 10 })! - 1200 * mb) < mb)  // steady: +40 MB a minute
+    precondition(isGrowing(series(30) { _ in 1000 }) == nil)  // flat
+    // noisy but rising: half the steps go down, but the line fits (R² ≈ 0.92)
+    precondition(isGrowing(series(30) { 1000 + Double($0) * 10 + ($0 % 2 == 0 ? 100 : -100) }) != nil)
+    precondition(isGrowing(series(30) { 1000 + ($0 >= 40 && $0 < 50 ? 1500 : 0) }) == nil)  // spike, then drop
+    precondition(isGrowing(series(30) { 1000 + Double(min($0, 120 - $0)) * 25 }) == nil)  // rise, then drop
+    precondition(isGrowing(series(30) { $0 < 60 ? 1000 : 2000 }) == nil)  // one step up: not a leak
+    precondition(isGrowing(series(14) { 1000 + Double($0) * 50 }) == nil)  // short history
+    precondition(isGrowing(series(30) { 400 + Double($0) * 2 }) == nil)  // +240 MB: below 300 MB
+    precondition(isGrowing(series(30) { 4000 + Double($0) * 3 }) == nil)  // +360 MB: below 25%
+    precondition(growthText(series(30) { 1000 + Double($0) * 5 }) == "+600 MB in 30 min")
+    func at(_ minutes: [Double], _ f: (Double) -> Double) -> [(at: Date, mem: Int64)] {
+        minutes.map { (t0 + $0 * 60, Int64(f($0) * Double(mb))) }
+    }
+    let gap = (0..<10).map(Double.init) + (40..<50).map(Double.init)  // one a minute, 30 min with no point
+    precondition(isGrowing(at(gap) { $0 < 20 ? 400 : 800 }) == nil)  // quit or asleep, back higher: a step
+    precondition(isGrowing(at(gap) { 1000 + 20 * ($0 < 20 ? $0 : $0 - 30) }) != nil)  // a leak goes on after sleep
+    precondition(isGrowing(at([0, 1, 20, 21]) { $0 < 10 ? 400 : 800 }) == nil)  // too few samples
+    // panel open at both ends (each 15 s), closed between (each 60 s): still a step
+    let ends = Array(stride(from: 0, to: 5, by: 0.25)) + (5..<55).map(Double.init) + Array(stride(from: 55, through: 60, by: 0.25))
+    precondition(isGrowing(at(ends) { $0 < 30 ? 400 : 800 }) == nil)
+
+    var h = History()
+    let g = [Group(name: "Big", isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/b", mem: 60 * mb)]),
+             Group(name: "Small", isApp: true, procs: [Proc(pid: 3, ppid: 1, uid: 501, path: "/s", mem: 10 * mb)])]
+    h.add(g, sys: SysMem(), at: t0)
+    h.add(g, sys: SysMem(), at: t0 + 5)  // under 15 s after the last one: skipped
+    precondition(h.samples.count == 1 && h.samples[0].groups == ["Big|true": 60 * mb])
+    for i in 1...600 { h.add(g, sys: SysMem(), at: t0 + Double(i) * 15) }  // 2.5 h, one each 15 s
+    precondition(h.samples.count == History.cap && h.points("Big|true").count == History.cap)
+    precondition(h.points("Small|true").isEmpty)
+    for i in 1...120 { h.add(g, sys: SysMem(), at: t0 + 9000 + Double(i) * 60) }  // panel closed: one a minute
+    precondition(h.samples.count == 61)  // only the last hour
+    // Panel closed: no top, so a group with a root process has no true memory and no point.
+    let mine = Group(name: "Mine", isApp: true, procs: [Proc(pid: 5, ppid: 1, uid: getuid(), path: "/m", mem: 60 * mb)])
+    let root = Group(name: "Root", isApp: false, procs: [Proc(pid: 4, ppid: 1, uid: 0, path: "/r", mem: 60 * mb)] + mine.procs)
+    h.add([mine, root], sys: SysMem(), allUsers: false, at: t0 + 20000)
+    precondition(h.samples.last!.groups == ["Mine|true": 60 * mb])
+    h.add([root], sys: SysMem(), at: t0 + 20015)
+    precondition(h.points("Root|false").map(\.mem) == [120 * mb])
+}
