@@ -796,8 +796,9 @@ func selfTest() {
         // Quit When Idle: Claude is open (1300 MB); Cursor is a leftover; 5 min is no menu choice.
         let rules = ["Claude": 60, "Cursor": 60, "WhatsApp": 5, "macOS": 60]
         let last: [String: Date] = ["Claude": t0 - 2 * h, "Cursor": t0 - 2 * h, "WhatsApp": t0 - 9 * h, "macOS": t0 - 9 * h]
-        func quits(_ gs: [Group], front: String? = nil, tried: [String: Date] = [:], ruled: [String: Date] = [:], at: Date = t0) -> [String] {
-            idleQuits(gs, rules: rules, ruled: ruled, lastFront: { last[$0] }, frontmost: front, tried: tried, now: at).map(\.name)
+        func quits(_ gs: [Group], front: String? = nil, tried: [String: Date] = [:], ruled: [String: Date] = [:],
+                   paused: [String: Set<pid_t>] = [:], at: Date = t0) -> [String] {
+            idleQuits(gs, rules: rules, ruled: ruled, lastFront: { last[$0] }, frontmost: front, tried: tried, paused: paused, now: at).map(\.name)
         }
         precondition(quits(groups) == ["Claude"] && quits(groups, at: t0 - h - 1).isEmpty)  // idle 2 h; 59:59
         precondition(quits(groups, front: "Claude").isEmpty)  // frontmost
@@ -806,6 +807,9 @@ func selfTest() {
         var pausedClaude = claude
         pausedClaude.procs[0].stopped = true  // it cannot answer the quit
         precondition(quits([pausedClaude]).isEmpty && quits(ignoring([claude], ["Claude"])) == ["Claude"])
+        // Paused by Pause When in Background: the quit resumes it first. Paused by hand: never.
+        let pid = pausedClaude.procs[0].pid
+        precondition(quits([pausedClaude], paused: ["Claude": [pid]]) == ["Claude"] && quits([pausedClaude], paused: ["Claude": [pid + 1]]).isEmpty)
         // A rule set on an app idle for 2 h counts from when it was set: never a quit at once.
         precondition(quits(groups, ruled: ["Claude": t0 - h + 1]).isEmpty && quits(groups, ruled: ["Claude": t0 - h]) == ["Claude"])
         precondition(quits(groups, tried: ["Claude": t0 - 2 * h], ruled: ["Claude": t0 - h]).isEmpty)  // still one ask per stretch

@@ -145,7 +145,7 @@ enum Rules {
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         ruled = Dictionary(uniqueKeysWithValues: restart.keys.map { ($0, ruled[$0] ?? now) })
         for g in restarts(groups, rules: restart, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, restarted: restarted,
-                          paused: pauses.paused.mapValues { Set($0.procs.map(\.pid)) }, bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
+                          paused: pausedPIDs, bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
             guard let app = Actions.runningApp(g), let url = app.bundleURL, let mb = restartRule(g.name, restart) else { continue }
             restarted[g.name] = now
             resume(g.name)  // what the pause rule stopped: it must answer the quit, and the new copy gets a new wait
@@ -171,6 +171,9 @@ enum Rules {
             d.set(try? JSONEncoder().encode(loggedOnce(Freed.log, e)), forKey: "recentActions")
         }
     }
+
+    /// App name → the PIDs AppMem paused: the rules that quit an app resume these first.
+    static var pausedPIDs: [String: Set<pid_t>] { pauses.paused.mapValues { Set($0.procs.map(\.pid)) } }
 
     static func resume(_ name: String) {
         if let g = pauses.resume(name, now: Date()) { Actions.send(SIGCONT, g.procs, in: g) }

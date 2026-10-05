@@ -64,16 +64,17 @@ func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, s
 /// rule's start at the latest (`ruled`: name → the first scan that saw the rule), so a rule
 /// set on an app idle for hours does not quit it at once. Never when Usage has no time for
 /// it (unknown is not idle), never the frontmost app, never one with a paused process (it
-/// cannot answer the quit). `tried`: name → the last-front time of a quit already asked:
-/// one ask per idle stretch, so an app whose user cancelled the quit (a save dialog) is not
-/// asked again each minute.
+/// cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
+/// quit resumes them, else Pause When in Background would keep it from ever quitting).
+/// `tried`: name → the last-front time of a quit already asked: one ask per idle stretch, so
+/// an app whose user cancelled the quit (a save dialog) is not asked again each minute.
 /// ponytail: frontmost is the only sign of use (see Usage), so a player with a rule quits
 /// while it plays in the background; check CPU or audio if that bites.
 func idleQuits(_ groups: [Group], rules: [String: Int], ruled: [String: Date], lastFront: (String) -> Date?,
-               frontmost: String?, tried: [String: Date], now: Date) -> [Group] {
+               frontmost: String?, tried: [String: Date], paused: [String: Set<pid_t>] = [:], now: Date) -> [Group] {
     groups.filter { g in
         guard let m = idleRule(g.name, rules), !g.leftover, !g.ignored, g.name != "macOS", g.name != frontmost,
-              !g.procs.contains(where: \.stopped), let last = lastFront(g.name), tried[g.name] != last else { return false }
+              !g.procs.contains(where: { $0.stopped && !(paused[g.name] ?? []).contains($0.pid) }), let last = lastFront(g.name), tried[g.name] != last else { return false }
         return now.timeIntervalSince(max(last, ruled[g.name] ?? last)) >= TimeInterval(m * 60)
     }
 }
@@ -131,11 +132,16 @@ enum Auto {
         ruled = Dictionary(uniqueKeysWithValues: rules.keys.map { ($0, ruled[$0] ?? now) })
         guard !rules.isEmpty else { return }
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
-        for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried, now: now) {
+        for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried,
+                           paused: Rules.pausedPIDs, now: now) {
             tried[g.name] = Usage.lastFront(g.name)
+            guard let app = Actions.runningApp(g) else { continue }
+            // What the pause rule stopped must answer the quit. Its clock starts again, so Rules.check
+            // right after this does not pause it partway through the quit, or again if the user cancels.
+            Rules.resume(g.name)
             // Never forceTerminate: the app can ask to save, or cancel. So counted once it has quit.
             // ponytail: one that quits later than 10 s (a save dialog answered later) is not counted.
-            if let app = Actions.runningApp(g), app.terminate() { Actions.whenQuit(app) { Freed.record([g], how: "Idle quit") } }
+            if app.terminate() { Actions.whenQuit(app) { Freed.record([g], how: "Idle quit") } }
         }
     }
 }
