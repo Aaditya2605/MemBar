@@ -148,7 +148,7 @@ enum Rules {
         let d = UserDefaults.standard, now = Date(), restart = d.restartAbove
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         ruled = Dictionary(uniqueKeysWithValues: restart.keys.map { ($0, ruled[$0] ?? now) })
-        for g in restarts(groups, rules: restart, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, restarted: restarted,
+        for g in restarts(groups.filter { !Auto.quitAsked($0.name) }, rules: restart, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, restarted: restarted,
                           paused: pausedPIDs, bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
             guard let app = Actions.runningApp(g), let url = app.bundleURL, let mb = restartRule(g.name, restart) else { continue }
             restarted[g.name] = now

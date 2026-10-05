@@ -119,6 +119,11 @@ enum Auto {
     private static var ruled: [String: Date] = [:]  // app name → the first scan that saw its rule
     private static var tried: [String: Date] = [:]  // app name → its last-front time when asked to quit
 
+    /// Quit When Idle asked `name` to quit in this idle period (not frontmost since): Restart When Above
+    /// skips it, else it quits it again and reopens it, and Freed counts it twice. `map ?? false`: two nils are equal.
+    /// ponytail: an app opened again in the background, never frontmost, stays skipped until it comes to the front.
+    static func quitAsked(_ name: String) -> Bool { tried[name].map { $0 == Usage.lastFront(name) } ?? false }
+
     /// Each scan, from Model.refresh.
     static func check(_ groups: [Group], _ model: Model) {
         let d = UserDefaults.standard, now = Date(), after = autoStopAfter(d.integer(forKey: "autoStop"))

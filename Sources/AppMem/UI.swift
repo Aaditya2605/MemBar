@@ -77,7 +77,7 @@ final class Model: ObservableObject {
                 HistoryFile.save(self.history)  // at most every 5 min, off the main thread
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
-                Rules.check(g)  // Restart When Above, Pause When in Background
+                Rules.check(g)  // Restart When Above, Pause When in Background; after Auto: it skips what Auto asked to quit
                 Containers.shared.poll(g, open: self.panelOpen)  // docker stats for an open VM row
             }
         }
