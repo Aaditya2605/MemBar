@@ -134,11 +134,12 @@ enum Rules {
         }
         // queue nil: on the posting (main) thread, before the exit.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in resumeAll() }
-        // `kill` and `killall AppMem` skip willTerminate: resume, then exit as SIGTERM would.
+        // `kill` and `killall AppMem` skip willTerminate: post it, so its observers run (the resume above,
+        // the history save, --drive's restore), then exit as SIGTERM would. Not NSApp.terminate: a modal alert can hold it up.
         // ponytail: a crash or SIGKILL leaves them paused; the row's Resume or `kill -CONT` undoes it.
         signal(SIGTERM, SIG_IGN)
         term = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-        term?.setEventHandler { resumeAll(); exit(0) }
+        term?.setEventHandler { NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: NSApp); exit(0) }
         term?.resume()
     }
 
