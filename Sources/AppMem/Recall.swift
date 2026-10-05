@@ -66,14 +66,12 @@ func respawned(_ g: Group, pids: Set<pid_t>, paths: Set<String>) -> [Proc] {
     g.leftover ? g.procs.filter { paths.contains($0.path) && !pids.contains($0.pid) } : []
 }
 
-/// The label of the launchd job that runs one of `pids`, from `launchctl list` lines
-/// "PID<tab>Status<tab>Label" (PID "-" when the job does not run).
-func launchdLabel(_ list: String, pids: Set<pid_t>) -> String? {
-    for line in list.split(separator: "\n") {
-        let f = line.split(separator: "\t")
-        if f.count >= 3, let pid = pid_t(f[0]), pids.contains(pid) { return String(f[2]) }
-    }
-    return nil
+/// `launchctl list` lines "PID<tab>Status<tab>Label" → label by PID (PID "-" when the job does not
+/// run: left out). Orphans uses its keys, Recall its labels.
+func launchdJobs(_ list: String) -> [pid_t: String] {
+    Dictionary(list.split(separator: "\n").compactMap { l -> (pid_t, String)? in
+        let f = l.split(separator: "\t"); return f.count >= 3 ? pid_t(f[0]).map { ($0, String(f[2])) } : nil
+    }, uniquingKeysWith: { a, _ in a })  // not uniqueKeysWithValues: a repeated PID must not trap
 }
 
 /// `launchctl list`: the launchd jobs of this user.
@@ -102,8 +100,8 @@ struct Recall {
                 if !new.isEmpty {
                     stopped[name] = nil
                     // A job of ours is a child of launchd that this user runs.
-                    let label = new.contains { $0.ppid == 1 && $0.uid == getuid() }
-                        ? launchdLabel(jobs(), pids: Set(new.map(\.pid))) : nil
+                    let j = new.contains { $0.ppid == 1 && $0.uid == getuid() } ? launchdJobs(jobs()) : [:]
+                    let label = new.lazy.compactMap { j[$0.pid] }.first
                     respawns[name] = "It starts again after Stop: macOS or a launch agent restarts it"
                         + (label.map { ". launchd job: \($0)" } ?? "")
                     labels[name] = label
@@ -195,7 +193,7 @@ func recallTest() {
     openFoo.leftover = false
     precondition(respawned(openFoo, pids: [90], paths: [agent]).isEmpty)
     let list = "PID\tStatus\tLabel\n-\t0\tcom.apple.idle\n91\t0\tcom.foo.agent\n"
-    precondition(launchdLabel(list, pids: [91]) == "com.foo.agent" && launchdLabel(list, pids: [5]) == nil)
+    precondition(launchdJobs(list) == [91: "com.foo.agent"] && launchdJobs(list + "91\t0\tcom.foo.again\nbad\n") == [91: "com.foo.agent"])
 
     // Recall end to end, with this user's processes: stop, back within 60 s, marked.
     let me = getuid(), t0 = Date()

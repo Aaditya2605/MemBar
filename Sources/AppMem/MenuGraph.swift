@@ -103,7 +103,7 @@ func snapshotMenuBar(to path: String) {
     let physical = Int64(ProcessInfo.processInfo.physicalMemory), now = Date()
     let live = graphSamples(History.demo([], sys: systemMem()).samples)
     let climb = graphSamples((0..<40).map { (i: Int) -> Sample in
-        Sample(at: now - Double(39 - i) * 60, ram: physical / 100 * Int64(30 + i * 60 / 39), swap: 0, groups: [:])
+        Sample(at: now - Double(39 - i) * 60, ram: physical / 100 * Int64(30 + i * 60 / 39), groups: [:])
     })
     let rows: [(Pressure, Int64, [Sample])] = [(.normal, 0, live), (.normal, 1, live), (.warning, 0, climb), (.critical, 1, climb)]
     let cell = NSSize(width: 70, height: 24)  // 24 pt: the menu bar on a Mac with a notch

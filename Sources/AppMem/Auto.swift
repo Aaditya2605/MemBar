@@ -96,8 +96,9 @@ extension UserDefaults {
 enum Freed {
     struct Entry: Codable { let at: Date, name: String, mem: Int64, how: String }
 
-    static var log: [Entry] {
-        UserDefaults.standard.data(forKey: "recentActions").flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? []
+    static var log: [Entry] {  // the one reader and writer of "recentActions"
+        get { UserDefaults.standard.data(forKey: "recentActions").flatMap { try? JSONDecoder().decode([Entry].self, from: $0) } ?? [] }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "recentActions") }
     }
 
     /// `how`: "Stop", "Stop All", "Auto-stop", "Idle quit" or "Restart above 4 GB". The memory of the last scan:
@@ -108,7 +109,7 @@ enum Freed {
         d.set(d.integer(forKey: "freedBytes") + gs.reduce(0) { $0 + Int($1.mem) }, forKey: "freedBytes")
         if d.double(forKey: "freedSince") == 0 { d.set(now.timeIntervalSince1970, forKey: "freedSince") }
         let new = gs.map { Entry(at: now, name: $0.name, mem: $0.mem, how: how) }
-        d.set(try? JSONEncoder().encode(logged(log, new)), forKey: "recentActions")
+        log = logged(log, new)
     }
 }
 

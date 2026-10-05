@@ -8,7 +8,7 @@ import SwiftUI
 
 struct Sample {
     let at: Date
-    let ram: Int64, swap: Int64
+    let ram: Int64
     let groups: [String: Int64]  // group id → memory, only for groups of 50 MB or more (see add)
 }
 
@@ -27,7 +27,7 @@ struct History {
         // ponytail: wall clock, so a clock set back stops new samples until it catches up.
         if let last = samples.last, now.timeIntervalSince(last.at) < 15 { return }
         let me = getuid(), big = groups.filter { $0.mem >= 50 << 20 && (allUsers || $0.procs.allSatisfy { $0.uid == me }) }
-        samples.append(Sample(at: now, ram: sys.ram, swap: sys.swap,
+        samples.append(Sample(at: now, ram: sys.ram,
                               groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
         // Older than an hour, or past the cap: into the 24 h points. Oldest first: add only appends later times.
         let old = max(samples.prefix { now.timeIntervalSince($0.at) > 3600 }.count, samples.count - Self.cap)
@@ -123,13 +123,13 @@ extension History {
                 (g.id, g.id == big ? Int64(Double(g.mem) * (0.5 + 0.5 * f + 0.02 * wave)) : g.mem)
             }
             h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15, ram: Int64(Double(sys.ram) * (0.9 + 0.1 * f + 0.02 * wave)),
-                                    swap: Int64(Double(sys.swap) * f), groups: Dictionary(uniqueKeysWithValues: gs)))
+                                    groups: Dictionary(uniqueKeysWithValues: gs)))
         }
-        for i in 0..<276 {  // the 23 h before, one point each 5 min: the 24 h chart (Details too: its groups)
+        for i in 0..<276 {  // the 23 h before, one point each 5 min: the Details 24 h chart
             let wave = sin(Double(i) / 24)
             let gs = groups.map { ($0.id, Int64(Double($0.mem) * ($0.id == big ? 0.5 : 1) * (0.85 + 0.1 * wave))) }
             h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300, ram: Int64(Double(sys.ram) * (0.8 + 0.1 * wave)),
-                                  swap: Int64(Double(sys.swap) * 0.5 * (1 + wave)), groups: topGroups(Dictionary(uniqueKeysWithValues: gs))))
+                                  groups: topGroups(Dictionary(uniqueKeysWithValues: gs))))
         }
         return h
     }

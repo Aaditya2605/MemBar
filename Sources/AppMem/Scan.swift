@@ -566,7 +566,7 @@ func selfTest() {
 
     do {  // MenuGraph.swift: the RAM Graph's samples, line and tooltip
         let t0 = Date(timeIntervalSince1970: 1_000_000), gb: Int64 = 1 << 30, size = CGSize(width: 28, height: 14)
-        func s(_ sec: Double, _ ram: Int64 = 8 << 30) -> Sample { Sample(at: t0 + sec, ram: ram, swap: 0, groups: [:]) }
+        func s(_ sec: Double, _ ram: Int64 = 8 << 30) -> Sample { Sample(at: t0 + sec, ram: ram, groups: [:]) }
         // One a minute: the open panel's (each 15 s) thinned, the closed ones (60 to 70 s apart) all kept; the newest 29.
         precondition(graphSamples((0...40).map { s(Double($0) * 15) }).map(\.at) == (0...10).map { t0 + Double($0) * 60 })
         let hour = (0..<60).map { s(Double($0) * 65) }, kept = graphSamples(hour)

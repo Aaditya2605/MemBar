@@ -22,10 +22,10 @@ func topGroups(_ groups: [String: Int64]) -> [String: Int64] {
 func fold(_ older: inout [Sample], _ s: Sample) {
     func slot(_ d: Date) -> Double { (d.timeIntervalSince1970 / 300).rounded(.down) }
     if let last = older.last, slot(last.at) == slot(s.at) {
-        older[older.count - 1] = Sample(at: last.at, ram: max(last.ram, s.ram), swap: max(last.swap, s.swap),
+        older[older.count - 1] = Sample(at: last.at, ram: max(last.ram, s.ram),
                                         groups: topGroups(last.groups.merging(s.groups, uniquingKeysWith: max)))
     } else {
-        older.append(Sample(at: s.at, ram: s.ram, swap: s.swap, groups: topGroups(s.groups)))
+        older.append(Sample(at: s.at, ram: s.ram, groups: topGroups(s.groups)))
     }
 }
 
@@ -52,7 +52,7 @@ func peakLine(_ p: Peak) -> String { "\(p.name): \(fmt(p.mem)) at \(p.at.formatt
 /// memory in MB, and its groups by their place in `ids`. Bytes and a name in each point made a
 /// day about three times larger.
 private struct HistoryJSON: Codable {
-    struct Point: Codable { let t: Int, ram: Int, swap: Int, g: [Int: Int] }
+    struct Point: Codable { let t: Int, ram: Int, g: [Int: Int] }  // an old file's "swap" is ignored
     let ids: [String]
     let points: [Point]
 }
@@ -71,7 +71,7 @@ extension History {
             return ids.count - 1
         }
         let points = (older + samples).map { s in
-            HistoryJSON.Point(t: Int(s.at.timeIntervalSince1970), ram: Int(s.ram >> 20), swap: Int(s.swap >> 20),
+            HistoryJSON.Point(t: Int(s.at.timeIntervalSince1970), ram: Int(s.ram >> 20),
                               g: Dictionary(uniqueKeysWithValues: topGroups(s.groups).map { (index($0.key), Int($0.value >> 20)) }))
         }
         return (try? JSONEncoder().encode(HistoryJSON(ids: ids, points: points))) ?? Data()
@@ -83,7 +83,7 @@ extension History {
     init?(decoding data: Data, now: Date = Date()) {
         guard let f = try? JSONDecoder().decode(HistoryJSON.self, from: data) else { return nil }
         let all = f.points.map { p in
-            Sample(at: Date(timeIntervalSince1970: TimeInterval(p.t)), ram: Int64(p.ram) << 20, swap: Int64(p.swap) << 20,
+            Sample(at: Date(timeIntervalSince1970: TimeInterval(p.t)), ram: Int64(p.ram) << 20,
                    groups: Dictionary(p.g.compactMap { i, mb in f.ids.indices.contains(i) ? (f.ids[i], Int64(mb) << 20) : nil },
                                       uniquingKeysWith: max))  // not uniqueKeys: a damaged file must not trap
         }.filter { $0.at <= now && now.timeIntervalSince($0.at) <= 86400 }.sorted { $0.at < $1.at }
@@ -153,13 +153,13 @@ struct PeaksMenu: View {
 func dayTest() {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000), mb: Int64 = 1 << 20  // a 5 min slot starts at t0
     func s(_ at: TimeInterval, ram: Int64 = 0, _ g: [String: Int64] = [:]) -> Sample {
-        Sample(at: t0 + at, ram: ram * mb, swap: ram / 2 * mb, groups: g.mapValues { $0 * mb })
+        Sample(at: t0 + at, ram: ram * mb, groups: g.mapValues { $0 * mb })
     }
 
     // Downsampling: one point each 5 min of the clock, each number at its highest, at its first sample's time.
     var o: [Sample] = []
     for i in 0..<40 { fold(&o, s(Double(i) * 15, ram: 1000 + Int64(i), ["A|true": 200 + Int64(i % 7), "B|true": 60])) }
-    precondition(o.map(\.at) == [t0, t0 + 300] && o.map(\.ram) == [1019 * mb, 1039 * mb] && o.map(\.swap) == [509 * mb, 519 * mb])
+    precondition(o.map(\.at) == [t0, t0 + 300] && o.map(\.ram) == [1019 * mb, 1039 * mb])
     precondition(o[0].groups == ["A|true": 206 * mb])  // B: under 100 MB
     do {  // a restart with an empty last hour: nothing folds, but each add drops the points older than 24 h
         var r = History(older: o)
@@ -178,7 +178,7 @@ func dayTest() {
     // A full day, 20 groups of GBs in each point, 40 names: the file stays under 200 KB.
     let names = (0..<40).map { "Some Application Name \($0 + 10)|true" }
     func full(_ at: TimeInterval, _ k: Int) -> Sample {
-        Sample(at: t0 + at, ram: 15_000 * mb, swap: 9_000 * mb,
+        Sample(at: t0 + at, ram: 15_000 * mb,
                groups: Dictionary(uniqueKeysWithValues: (0..<20).map { (names[(k + $0) % 40], Int64(10_000 + $0) * mb) }))
     }
     let day = History(samples: (0..<240).map { full(82800 + Double($0) * 15, $0) }, older: (0..<276).map { full(Double($0) * 300, $0) })
@@ -191,13 +191,13 @@ func dayTest() {
                       older: [s(0, ram: 8000, ["A|true": 250, "macOS|false": 3000]), s(300, ram: 8100)])
     let rt = History(decoding: two.encoded(), now: t0 + 86400)!
     precondition(rt.samples.map(\.at) == two.samples.map(\.at) && rt.samples.map(\.ram) == two.samples.map(\.ram))
-    precondition(rt.samples.map(\.swap) == two.samples.map(\.swap) && rt.samples[0].groups == ["A|true": 300 * mb])
+    precondition(rt.samples[0].groups == ["A|true": 300 * mb])
     precondition(rt.older.map(\.at) == two.older.map(\.at) && rt.older.map(\.groups) == two.older.map(\.groups))
     // An hour later: the last hour's points fold into one 5 min point, the first two are older than 24 h.
     let later = History(decoding: two.encoded(), now: t0 + 90000)!
     precondition(later.samples.isEmpty && later.older.map(\.at) == [t0 + 86370] && later.older[0].ram == 9100 * mb)
     precondition(later.older[0].groups == ["A|true": 320 * mb])
-    // Damaged or another format: nil, so the next save replaces it. An unknown place drops; a future point drops.
+    // Damaged or another format: nil, so the next save replaces it. An unknown place drops; a future point drops; an old "swap" is ignored.
     precondition(History(decoding: Data("{".utf8)) == nil && History(decoding: Data()) == nil && History(decoding: Data("[]".utf8)) == nil)
     precondition(History(decoding: Data(#"{"ids":[],"points":[{"t":1}]}"#.utf8)) == nil)
     let odd = #"{"ids":["A|true","A|true"],"points":[{"t":1800000000,"ram":1,"swap":0,"g":{"0":200,"1":300,"7":400}},{"t":1800003000,"ram":2,"swap":0,"g":{}}]}"#
@@ -213,5 +213,5 @@ func dayTest() {
     precondition(peaks(p, since: t0 + 301).map(\.name) == ["A", "B", "D", "E", "F"] && peaks(p, since: t0 + 301)[1].mem == 400 * mb)
     precondition(peaks([], since: t0).isEmpty && Peak(id: "A|B|true", mem: 0, at: t0).name == "A|B")
     precondition(peakLine(Peak(id: "Google Chrome|true", mem: 1200 * mb, at: t0)) == "Google Chrome: 1.17 GB at " + t0.formatted(date: .omitted, time: .shortened))
-    precondition(History(samples: [Sample(at: Date(), ram: 0, swap: 0, groups: ["A|true": mb])]).peaksToday().map(\.id) == ["A|true"])
+    precondition(History(samples: [Sample(at: Date(), ram: 0, groups: ["A|true": mb])]).peaksToday().map(\.id) == ["A|true"])
 }

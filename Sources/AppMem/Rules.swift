@@ -171,7 +171,7 @@ enum Rules {
         for g in pause {
             Actions.send(SIGSTOP, g.procs, in: g)
             let e = Freed.Entry(at: now, name: g.name, mem: g.mem, how: "Background pause")  // logged, not freed: it keeps its memory
-            d.set(try? JSONEncoder().encode(loggedOnce(Freed.log, e)), forKey: "recentActions")
+            Freed.log = loggedOnce(Freed.log, e)
         }
     }
 

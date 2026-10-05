@@ -178,7 +178,7 @@ struct HoverLayer: View {
 /// `AppMem --test`: the Details chart's series, its numbers and the hover.
 func detailChartTest() {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000), mb: Int64 = 1 << 20
-    func s(_ at: TimeInterval, _ g: [String: Int64]) -> Sample { Sample(at: t0 + at, ram: 0, swap: 0, groups: g.mapValues { $0 * mb }) }
+    func s(_ at: TimeInterval, _ g: [String: Int64]) -> Sample { Sample(at: t0 + at, ram: 0, groups: g.mapValues { $0 * mb }) }
     // Missing points, gone and back, and a 10 min gap with no sample start a new run; other groups do not matter.
     let samples = [s(0, ["B|true": 9]), s(15, ["A|true": 100, "B|true": 9]), s(30, ["A|true": 120, "B|true": 9]), s(45, ["B|true": 9]),  // A gone
                    s(60, ["A|true": 300]), s(75, ["A|true": 310]), s(676, ["A|true": 200]), s(691, ["A|true": 200]), s(1291, ["A|true": 50])]

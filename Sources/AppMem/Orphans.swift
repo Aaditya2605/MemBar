@@ -10,11 +10,6 @@ import Foundation
 
 let orphanHelp = "Started from a terminal or an agent that is gone, and still running"  // the badge's
 
-/// The PIDs in `launchctl list` lines "PID<tab>Status<tab>Label" ("-" when not running).
-func launchdPIDs(_ list: String) -> Set<pid_t> {
-    Set(list.split(separator: "\n").compactMap { $0.split(separator: "\t").first.flatMap { pid_t($0) } })
-}
-
 /// Orphans of `uid` and every process under them. An orphan: a command-line process
 /// (isCLI: not in an .app, not Apple's, not tmux and the like, whose sessions are kept
 /// on purpose) that launchd adopted (ppid 1) but does not run as a job, and `detached`.
@@ -103,7 +98,7 @@ struct Orphans {
 
     mutating func mark(_ groups: [Group], _ procs: [pid_t: Proc], open: Bool) -> [Group] {
         if open, -at.timeIntervalSinceNow > 30 {  // empty: launchctl failed or timed out; no jobs would make them all orphans
-            let now = Date(), l = launchctlList(); if !l.isEmpty { jobs = launchdPIDs(l); at = now }
+            let now = Date(), l = launchctlList(); if !l.isEmpty { jobs = Set(launchdJobs(l).keys); at = now }
         }
         let at = at, d = UserDefaults.standard
         return orphaning(groups, orphans(procs, jobs: jobs, detached: { detached($0, before: at) }, terminal: hasTerminal), procs: procs,
@@ -121,7 +116,6 @@ func orphanTest() {
         (pid, Proc(pid: pid, ppid: ppid, uid: uid, path: path, mem: 1 << 20))
     }
     let node = "/opt/homebrew/bin/node"
-    precondition(launchdPIDs("PID\tStatus\tLabel\n-\t0\tcom.apple.idle\n91\t0\tcom.foo.agent\n") == [91])
     let procs = Dictionary(uniqueKeysWithValues: [
         p(1, 0, "/sbin/launchd"),
         p(10, 1, node), p(11, 10, "/opt/homebrew/bin/esbuild"), p(12, 11, "/bin/sh"),  // orphan, its child and grandchild

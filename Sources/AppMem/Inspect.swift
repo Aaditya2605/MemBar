@@ -44,7 +44,7 @@ func envText(_ env: [(name: String, value: String)], show: Bool) -> String {
 func toolText(_ exe: String, _ args: [String], timeout: TimeInterval) -> String {
     let p = Process(), out = Pipe(), err = Pipe()
     p.executableURL = URL(fileURLWithPath: exe); p.arguments = args
-    p.standardOutput = out; p.standardError = err
+    p.standardOutput = out; p.standardError = err; p.standardInput = FileHandle.nullDevice  // run from a terminal: no tool reads its keys
     guard (try? p.run()) != nil else { return "\(exe) did not start." }
     let stop = DispatchWorkItem { if p.isRunning { p.terminate() } }
     DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: stop)

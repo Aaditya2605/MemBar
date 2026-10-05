@@ -83,22 +83,13 @@ func dockerCLI() -> String? {
 }
 
 /// `docker stats` once, ended after 3 s: a daemon that hangs must not hold the queue. [] when
-/// docker is missing, fails or is ended.
+/// docker is missing or fails (its error and toolText's notes are not JSON lines); on a timeout,
+/// only the full lines it printed.
 /// ponytail: it samples twice for the CPU (about 2 s), so with many containers it can take
 /// longer than 3 s and show nothing; a longer timeout if that happens.
 func dockerStats() -> [Container] {
     guard let docker = dockerCLI() else { return [] }
-    let p = Process(), pipe = Pipe()
-    p.executableURL = URL(fileURLWithPath: docker)
-    p.arguments = ["stats", "--no-stream", "--format", "{{json .}}"]
-    p.standardOutput = pipe; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return [] }
-    let end = DispatchWorkItem { p.terminate() }  // our own child only
-    DispatchQueue.global().asyncAfter(deadline: .now() + 3, execute: end)
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()  // before wait: a full pipe would block docker
-    p.waitUntilExit()
-    end.cancel()
-    return p.terminationReason == .exit && p.terminationStatus == 0 ? containers(data) : []
+    return containers(Data(toolText(docker, ["stats", "--no-stream", "--format", "{{json .}}"], timeout: 3).utf8))
 }
 
 /// What the expanded VM row shows. Main thread only.
