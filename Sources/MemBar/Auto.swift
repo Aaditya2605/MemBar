@@ -49,13 +49,15 @@ func leftoverClock(_ groups: [Group], since: [String: Date], now: Date) -> [Stri
 /// when Settings counts it as a leftover: no app tells it is waste, and a server kept on
 /// purpose looks the same. Never a group that Recall keeps a command-line job in: a server
 /// started in the app's terminal and kept after the app quit (nohup, pg_ctl, pm2) looks
-/// the same too. Stop by hand still can.
+/// the same too. Never a group that is a leftover only by its deleted program file: a job
+/// kept on purpose across `brew upgrade` (a Python from the old Cellar) looks the same,
+/// and so does an app with its window open after its file is gone. Stop by hand still can.
 /// ponytail: an AI app's MCP servers that outlive it wait for Stop too.
 func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, simulator: Bool, now: Date,
                uid: uid_t = getuid()) -> [Group] {
     guard let after else { return [] }
     return groups.filter { g in
-        g.leftover && !g.orphan && !g.recalled && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
+        g.leftover && !g.orphan && !g.recalled && !g.deleted && g.respawns == nil && stoppable(g, uid: uid) && (simulator || !g.isSimulator && !g.isEmulator)
             && since[g.id].map { now.timeIntervalSince($0) >= after } == true
     }
 }

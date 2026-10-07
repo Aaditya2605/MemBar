@@ -33,7 +33,7 @@ struct BadgeLegend: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("What the Badges Mean").font(.headline).accessibilityAddTraits(.isHeader)
             header("In the list")
-            line(Badge.leftover, "Its app is not open, but it still runs.")
+            line(Badge.leftover, "Its app is not open, or its program file is deleted, but it still runs.")
             line(Badge.orphan(leftover: false), orphanHelp + ".")
             line(Badge.respawns, "It came back within 60 s after Stop.")
             line(Badge.paused, "Its processes are paused: they do not run.")
