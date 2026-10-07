@@ -132,6 +132,7 @@ A word in the panel's search that filters, any case: `leftover`, `orphan`, `paus
 ## Requirements
 
 - Menu bar only. No Dock icon (`LSUIElement`).
+- The app icon (Finder, alerts, notifications): Claude Design option 5b, "Paper": the glyph with 4 of 6 blocks lit on a light tile. Source `Resources/AppIcon.svg`; `build.sh` copies `Resources/AppIcon.icns` and says how to make it again.
 - The menu bar icon is 6 blocks: the lit ones show RAM used, to the nearest sixth (any use lights one). Its tooltip tells leftovers and memory pressure. Settings > Menu Bar Shows adds text: Icon Only (default), Leftover Size, RAM Used, Memory Pressure. Right-click opens a quick menu: Open, RAM and pressure, Stop All Leftovers, Copy Report, Refresh, Quit.
 - The panel lists groups with icon, CPU, memory and process count. Leftovers come first and are marked; then sort by name, processes, CPU, memory, or change since the mark. Search by group name, process name, site or role, PID or port, with filter tokens. Each group expands to a process tree (top 10, or all), with the command line on hover and listening ports; a simulator group to its devices, a VM group to its containers.
 - The header shows the RAM bar with the pressure (click: Activity Monitor's breakdown), the waste total with Stop All, the mark flag, Refresh and the gear menu. Above the list: the first-run card (once), then the insight line. The footer: hidden small groups and the freed total, on one line.
