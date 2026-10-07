@@ -14,6 +14,7 @@ struct Proc {
     var stopped = false  // SIGSTOP: paused by MemBar, a debugger or ctrl-Z in a shell
     var peak: Int64 = 0  // the most memory since it started; 0 when not readable (other users)
     var io = IO()  // energy and disk counters, and their rates since the previous scan (Energy.swift)
+    var deleted = false  // its executable file is deleted (isDeleted): nothing can start it again
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
 }
 
@@ -28,6 +29,7 @@ struct Group: Identifiable {
     var job: String?  // the label of the launchd job of this user that started it again (see Recall, Agents)
     var orphan = false  // its processes were left by a terminal or agent that is gone (see Orphans)
     var recalled = false  // holds a command-line process that only Recall's memory puts in this app's group
+    var deleted = false  // a leftover only because each owner runs a deleted executable (see group())
     var id: String { "\(name)|\(isApp)" }
     var mem: Int64 { procs.reduce(0) { $0 + $1.mem } }
     var cpu: Double { procs.reduce(0) { $0 + $1.cpu } }
@@ -117,10 +119,12 @@ func owner(of pid: pid_t, responsible: pid_t, procs: [pid_t: Proc]) -> pid_t {
 }
 
 /// Groups sorted by memory, leftovers first. `owners`: remembered app owners (Recall).
-func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:]) -> [Group] {
+/// `uid`: only its processes make a group a leftover by a deleted executable.
+func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:], uid: uid_t = getuid()) -> [Group] {
     let open = openApps(procs.values.lazy.map(\.path))
     var groups: [String: Group] = [:]
     var notExtension: Set<String> = []  // groups with a process that no app extension owns
+    var notDeleted: Set<String> = []  // groups with an owner whose executable is there, or that is not this user's
     for p in procs.values {
         let top = owner(of: p.pid, responsible: responsible(p.pid), procs: procs)
         let topPath = ownerPath(p, top: top, procs: procs, owners: owners)
@@ -129,6 +133,8 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
         if owners[top]?.app == topPath { groups[key]!.recalled = true }
         if !topPath.contains(".appex/") { notExtension.insert(key) }
+        let t = procs[top] ?? p
+        if !t.deleted || t.uid != uid { notDeleted.insert(key) }
     }
     return groups.values.map { g in
         var g = g
@@ -136,6 +142,14 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         // App extensions are not leftovers: macOS starts them with the app quit (a
         // notification extension decrypts each push), and starts them again after Stop.
         g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open)
+        // Each owner runs a deleted file: nothing can start it again (an uninstalled brew
+        // service). So also an app extension, or an app that reads as open (a Python.app from
+        // an upgraded Cellar). Not when one owner's file is there (an old `claude` under the
+        // open Claude app), nor a VM, the simulator or the emulator: their own rules decide.
+        // `deleted` only when it is the reason, as auto-stop skips it.
+        // ponytail: an orphan that orphaning() moves out of an open app's group is not checked: it stays an orphan.
+        g.deleted = !g.leftover && !notDeleted.contains(g.id) && !g.isVM && !g.isSimulator && !g.isEmulator
+        g.leftover = g.leftover || g.deleted
         return g
     }.sorted { ($0.leftover ? 1 : 0, $0.mem) > ($1.leftover ? 1 : 0, $1.mem) }
 }
@@ -193,6 +207,16 @@ func path(of pid: pid_t, comm: String) -> String {
         if !exe.isEmpty { return String(decoding: exe, as: UTF8.self) }
     }
     return comm
+}
+
+/// The executable at `path` is deleted: an uninstalled brew service, a Python from an
+/// upgraded Cellar. proc_pidpath fails for a deleted or replaced file, so `path` is then
+/// argv's, the path the program was started by: a file that an update replaced is there,
+/// and a brew service, started by its `opt/` link, counts after `brew uninstall`, not
+/// `brew upgrade`. Only ENOENT: a path that this user may not read is not deleted, nor a
+/// relative one or a short name. Never in Apple's folders: macOS and its apps are no leftovers.
+func isDeleted(_ path: String) -> Bool {
+    path.hasPrefix("/") && !systemPrefixes.contains(where: path.hasPrefix) && access(path, F_OK) != 0 && errno == ENOENT
 }
 
 private func shortInfo(_ pid: pid_t) -> proc_bsdshortinfo? {
@@ -267,10 +291,12 @@ func scan(top: [pid_t: Int64]) -> [pid_t: Proc] {
         let ok = withUnsafeMutablePointer(to: &ri) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) }
         } == 0
-        procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: path(of: pid, comm: comm(s)),
+        let exe = path(of: pid, comm: comm(s))
+        procs[pid] = Proc(pid: pid, ppid: pid_t(s.pbsi_ppid), uid: s.pbsi_uid, path: exe,
                           mem: ok ? Int64(ri.ri_phys_footprint) : top[pid] ?? 0,
                           cpuTime: ok ? UInt64(Double(ri.ri_user_time + ri.ri_system_time) * nsPerTick) : 0,
-                          stopped: s.pbsi_status == SSTOP, peak: ok ? Int64(ri.ri_lifetime_max_phys_footprint) : 0)
+                          stopped: s.pbsi_status == SSTOP, peak: ok ? Int64(ri.ri_lifetime_max_phys_footprint) : 0,
+                          deleted: isDeleted(exe))
         if ok { procs[pid]!.io = IO(ri) }
     }
     return procs
@@ -317,7 +343,7 @@ func printGroups() {
     print("pressure \(sys.pressure.label.lowercased()) \(sys.usedPct)%; RAM = app \(fmt(sys.app)) + wired \(fmt(sys.wired))",
           "+ compressed \(fmt(sys.compressed)); cached files \(fmt(sys.cached))")
     for g in groups.prefix(20) {
-        let flag = g.leftover ? (g.isSimulator ? "   <-- DEVICE RUNNING, SIMULATOR NOT OPEN" : "   <-- APP NOT OPEN") : ""
+        let flag = g.leftover ? (g.isSimulator ? "   <-- DEVICE RUNNING, SIMULATOR NOT OPEN" : g.deleted ? "   <-- PROGRAM DELETED" : "   <-- APP NOT OPEN") : ""
         print("\n" + g.name.padding(toLength: max(28, g.name.count), withPad: " ", startingAt: 0),
               fmt(g.mem).leftPad(9), String(g.procs.count).leftPad(4), "procs" + flag)
         for p in g.procs.prefix(5) {
@@ -386,6 +412,36 @@ func selfTest() {
     precondition(byName["iOS Simulator"]!.leftover && !byName["Weather"]!.leftover && !byName["macOS"]!.leftover)
     precondition(!byName["WhatsApp"]!.leftover && byName["WhatsApp"]!.procs.map(\.pid) == [50, 51])
     precondition(groups.map(\.name) == ["Cursor", "iOS Simulator", "Claude", "WhatsApp", "Weather", "macOS"])
+    do {  // a deleted program file: a leftover when each owner of this user runs one; Stop by hand, no auto-stop
+        let exe = Bundle.main.executablePath!  // there; under it, ENOTDIR: only ENOENT is deleted
+        precondition(isDeleted("/nonexistent/x") && !isDeleted("/bin/sh") && !isDeleted("kernel_task") && !isDeleted(exe) && !isDeleted(exe + "/x"))
+        precondition(!isDeleted("/usr/nonexistent/x") && !isDeleted("nonexistent/x"))  // Apple's folders; a relative path
+        func gone(_ pid: pid_t, _ ppid: pid_t, _ path: String, _ mb: Int64, uid: uid_t = 501) -> (pid_t, Proc) {
+            var q = Proc(pid: pid, ppid: ppid, uid: uid, path: path, mem: mb << 20)
+            q.deleted = true
+            return (pid, q)
+        }
+        let sync = "/opt/homebrew/opt/syncthing/bin/syncthing"
+        let python = "/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python"
+        var ps = procs
+        for (pid, q) in [gone(60, 1, sync, 90), gone(61, 60, sync, 10), gone(62, 1, python, 30),
+                         gone(70, 20, "/Users/a/.local/share/claude/versions/2.1.0", 200),
+                         gone(80, 1, "/opt/homebrew/opt/postgresql@16/bin/postgres", 50, uid: 0),
+                         gone(90, 1, "/Users/a/bin/old/tool", 5), p(91, 1, "/Users/a/bin/tool", 5)] { ps[pid] = q }
+        let gs = Dictionary(uniqueKeysWithValues: group(ps, responsible: { resp[$0] ?? -1 }, uid: 501).map { ($0.name, $0) })
+        let s = gs["syncthing"]!, claude = gs["Claude"]!
+        precondition(s.leftover && s.deleted && s.procs.map(\.pid) == [60, 61] && flagHelp(s) == "Its program file is deleted: uninstalled or upgraded")
+        precondition(gs["Python"]!.leftover && gs["Python"]!.deleted)  // its Python.app reads as open
+        precondition(!claude.leftover && !claude.deleted && claude.procs.contains { $0.pid == 70 })  // an old `claude` under the open app
+        precondition(!gs["postgres"]!.leftover && !gs["tool"]!.leftover && !gs["macOS"]!.leftover)  // root's; one owner of two
+        var cp = procs
+        cp[10]!.deleted = true  // a leftover by its own rule: its text and auto-stop stay
+        let cur = group(cp, responsible: { resp[$0] ?? -1 }, uid: 501).first { $0.name == "Cursor" }!
+        precondition(cur.leftover && !cur.deleted && flagHelp(cur) == "Cursor is not open")
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        precondition(autoStops([s, cur], since: [s.id: t0, cur.id: t0], after: 600, simulator: true, now: t0 + 3600, uid: 501).map(\.name) == ["Cursor"])
+        precondition(stopTargets([s], []).targets.count == 1 && !ignoring([s], ["syncthing"])[0].leftover)  // Stop All and --stop; Never Flag
+    }
     // CLI.swift: a stray or misspelt flag must never turn into a stop.
     precondition(parseArgs([]) == nil && parseArgs(["-h"]) == .help)
     precondition(parseArgs(["--json", "--cpu"]) == .json(cpu: true) && parseArgs(["--stop", "--json"]) == .json(cpu: false))
