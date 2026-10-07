@@ -413,6 +413,11 @@ func flagHelp(_ g: Group) -> String {
         : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open"
 }
 
+/// The glyph's lit blocks for `used` of `physical` RAM: the nearest sixth, and any use lights one.
+func litBlocks(_ used: Int64, of physical: Int64) -> Int {
+    used <= 0 || physical <= 0 ? 0 : min(6, max(1, Int((Double(used) / Double(physical) * 6).rounded())))
+}
+
 /// "12%", or "–" below 0.1% so idle groups do not read as busy.
 func cpu(_ v: Double) -> String { v < 0.1 ? "–" : v < 10 ? String(format: "%.1f%%", v) : String(format: "%.0f%%", v) }
 
@@ -426,7 +431,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         guard let button = item.button else { return }
-        button.image = Self.chip
+        button.image = Self.glyphs[0]
         button.target = self
         button.action = #selector(clicked)  // MenuBar.swift: a right click opens the quick menu
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -443,44 +448,31 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         pressureEvents.resume()
     }
 
-    // No size text in the menu bar by default (Settings > Menu Bar Shows): it read as the
-    // total RAM use. A yellow dot means "leftovers found", orange or red memory pressure
-    // (see menuState); the tooltip and the panel give the size.
-    static let chip: NSImage = {
-        let i = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "MemBar")!
-        i.isTemplate = true
-        return i
-    }()
-
-    // Not a template (it has a color), so it draws the chip in the menu bar text
-    // color itself. cacheMode .never: draw again when the menu bar goes dark/light.
-    static func dotIcon(_ color: NSColor, _ description: String) -> NSImage {
-        let i = NSImage(size: chip.size, flipped: false) { r in
-            chip.draw(in: r)
-            NSColor.labelColor.set()
-            r.fill(using: .sourceAtop)
-            let dot = NSRect(x: r.maxX - 6, y: r.maxY - 6, width: 6, height: 6)
-            NSGraphicsContext.current?.compositingOperation = .clear  // gap around the dot
-            NSBezierPath(ovalIn: dot.insetBy(dx: -1, dy: -1)).fill()
-            NSGraphicsContext.current?.compositingOperation = .sourceOver
-            color.setFill()
-            NSBezierPath(ovalIn: dot).fill()
+    // The menu bar glyph (Claude Design "membar, 6 segments"): 6 blocks of 4 x 8 pt, 1 pt apart,
+    // in 29 x 16 pt; the lit ones (litBlocks) at full ink, the rest at 25%. Templates: macOS
+    // tints them for a light or dark menu bar. No size text by default (Settings > Menu Bar
+    // Shows): it read as the total RAM use. The tooltip (menuState) and the panel tell leftovers
+    // and memory pressure.
+    static let glyphs: [NSImage] = (0...6).map { lit in
+        let i = NSImage(size: NSSize(width: 29, height: 16), flipped: false) { _ in
+            for n in 0..<6 {
+                NSColor.black.withAlphaComponent(n < lit ? 1 : 0.25).setFill()
+                NSBezierPath(roundedRect: NSRect(x: n * 5, y: 4, width: 4, height: 8), xRadius: 0.6, yRadius: 0.6).fill()
+            }
             return true
         }
-        i.cacheMode = .never
-        i.accessibilityDescription = description
+        i.isTemplate = true
+        i.accessibilityDescription = "MemBar"
         return i
     }
 
     func updateIcon() {
-        let s = menuState(model.sys.pressure, waste: model.waste)
-        // The description names the state, so a new image only when the state changes.
-        if item.button?.image?.accessibilityDescription != s.desc {
-            item.button?.image = s.dot.map { Self.dotIcon($0, s.desc) } ?? Self.chip
-        }
+        let s = menuState(model.sys.pressure, waste: model.waste), lit = litBlocks(model.sys.ram, of: Int64(ProcessInfo.processInfo.physicalMemory))
+        // A new image only when the lit blocks change: each set redraws the item.
+        if item.button?.image !== Self.glyphs[lit] { item.button?.image = Self.glyphs[lit] }
+        item.button?.setAccessibilityLabel(s.desc)  // the glyphs are shared: VoiceOver gets the state here
         item.button?.toolTip = s.tip
         updateTitle()  // MenuBar.swift
-        updateGraph(s)  // MenuGraph.swift: Menu Bar Shows > RAM Graph
     }
 
     @objc func toggle() {

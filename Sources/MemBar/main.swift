@@ -10,10 +10,6 @@ if let i = CommandLine.arguments.firstIndex(of: "--agent-test"), i + 2 < Command
 #endif
 if let status = runCLI(Array(CommandLine.arguments.dropFirst())) { exit(status) }  // CLI.swift
 #if DEBUG
-if ProcessInfo.processInfo.environment["MENUBAR"] != nil, let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
-    snapshotMenuBar(to: CommandLine.arguments[i + 1])  // MenuGraph.swift: the RAM Graph item, not the panel
-    exit(0)
-}
 if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
     if ProcessInfo.processInfo.environment["LEGEND"] != nil { snapshotLegend(to: CommandLine.arguments[i + 1]); exit(0) }  // Legend.swift
     if let k = ProcessInfo.processInfo.environment["INSPECT"] { snapshotInspect(to: CommandLine.arguments[i + 1], k); exit(0) }  // Inspect.swift

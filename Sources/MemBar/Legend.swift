@@ -24,7 +24,7 @@ enum Badge {
 }
 
 /// Gear menu > What the Badges Mean: a popover over the panel with each badge and its meaning,
-/// in CONTEXT.md's words. The real views and labels: Badge, PortChip, changeLabel, the menu bar's dot icon.
+/// in CONTEXT.md's words. The real views and labels: Badge, PortChip, changeLabel, the menu bar's glyph.
 struct BadgeLegend: View {
     var body: some View {
         let g = Group(name: "", isApp: true, procs: [Proc(pid: 0, ppid: 0, uid: 0, path: "", mem: 1000 << 20)])
@@ -51,9 +51,7 @@ struct BadgeLegend: View {
             line(PortChip(ports: [3000]), "The TCP ports it listens on (a dev server).")
             line(Text(fmt(1 << 30)).font(.caption).monospacedDigit().slotDot(0).padding(.leading, 8), "Its color in the RAM bar: one of the \(ramSlots) largest.")
             header("In the menu bar")
-            dot(.normal, waste: 1, "Yellow", "Leftovers found")
-            dot(.warning, waste: 0, "Orange", "Memory pressure: \(Pressure.warning.label)")
-            dot(.critical, waste: 0, "Red", "Memory pressure: \(Pressure.critical.label)")
+            line(Image(nsImage: Delegate.glyphs[4]).accessibilityLabel("Blocks"), "RAM used. Each lit block is about a sixth of the RAM.", center: true)
             Text("Point to a badge in the list for its details.").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
         }
         .padding(12)
@@ -77,12 +75,6 @@ struct BadgeLegend: View {
     /// As ChangeText draws it.
     func change(_ l: (text: String, color: Color, help: String)) -> some View {
         Text(l.text).font(.caption).monospacedDigit().foregroundStyle(l.color)
-    }
-
-    /// The menu bar's own icon. `color` for VoiceOver: the icon's description would say the meaning again.
-    func dot(_ p: Pressure, waste: Int64, _ color: String, _ meaning: String) -> some View {
-        let s = menuState(p, waste: waste)
-        return line(Image(nsImage: Delegate.dotIcon(s.dot!, s.desc)).accessibilityLabel("\(color) dot"), meaning, center: true)
     }
 }
 

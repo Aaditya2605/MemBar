@@ -11,7 +11,7 @@ import SwiftUI
 func refreshSeconds(_ stored: Int) -> TimeInterval { [2, 3, 5].contains(stored) ? TimeInterval(stored) : 3 }
 
 /// An ignored app is never a leftover: no badge, no Stop, not in the waste total
-/// or the menu bar dot. Exact names, as the right-click menu writes them.
+/// or the menu bar tooltip. Exact names, as the right-click menu writes them.
 /// `ignored` marks the ones it unflags: the app is not open, so it is not idle either.
 func ignoring(_ groups: [Group], _ ignored: [String]) -> [Group] {
     groups.map { g in
@@ -22,7 +22,7 @@ func ignoring(_ groups: [Group], _ ignored: [String]) -> [Group] {
 }
 
 /// The groups that the plain list shows, and the small ones it hides (for the
-/// footer). Leftovers always show: the waste total and the menu bar dot count them.
+/// footer). Leftovers always show: the waste total and the menu bar tooltip count them.
 /// So do groups with a paused process: the row's right-click menu is where it resumes.
 func visible(_ groups: [Group], hideSmall: Bool, showMacOS: Bool) -> (shown: [Group], small: [Group]) {
     let gs = showMacOS ? groups : groups.filter { $0.name != "macOS" }

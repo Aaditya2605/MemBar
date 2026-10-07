@@ -10,8 +10,6 @@ enum Pressure: Int32 {
     case normal = 1, warning = 2, critical = 4
     var label: String { switch self { case .normal: "Normal"; case .warning: "Warning"; case .critical: "Critical" } }
     var color: Color { switch self { case .normal: .green; case .warning: .orange; case .critical: .red } }
-    // Orange, not Activity Monitor's yellow: as the menu bar dot and graph, where yellow means leftovers.
-    // ponytail: leftovers are orange in the list and yellow in the menu bar; one color would hide Warning there.
 }
 
 struct SysMem {
@@ -35,18 +33,16 @@ struct SysMem {
     }
 }
 
-/// The menu bar dot and its words. Pressure wins over leftovers, critical over
-/// warning: it needs action now.
-func menuState(_ p: Pressure, waste: Int64) -> (dot: NSColor?, desc: String, tip: String) {
-    let dot: NSColor? = p == .critical ? .systemRed : p == .warning ? .systemOrange : waste > 0 ? .systemYellow : nil
+/// The menu bar icon's words: VoiceOver's and the tooltip's. Pressure first: it needs action now.
+func menuState(_ p: Pressure, waste: Int64) -> (desc: String, tip: String) {
     let level = p == .normal ? nil : p.label
     let desc = ["MemBar", level.map { "memory pressure \($0.lowercased())" }, waste > 0 ? "leftovers found" : nil]
     let tip = [level.map { "Memory pressure: \($0)" }, waste > 0 ? "Leftovers use \(fmt(waste))" : nil].compactMap { $0 }
-    return (dot, desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "MemBar: no leftovers" : tip.joined(separator: "\n"))
+    return (desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "MemBar: no leftovers" : tip.joined(separator: "\n"))
 }
 
-/// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot colored as the
-/// menu bar's. One line for both: a second bar would weigh the header down. A dot, not
+/// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot in its color.
+/// One line for both: a second bar would weigh the header down. A dot, not
 /// colored words: green and orange text is too faint on the light panel.
 /// A click shows the breakdown.
 struct PressureBar: View {

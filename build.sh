@@ -14,8 +14,8 @@
 #   $MemBar --stop [NAME ...] [--dry-run]   stop all or the named leftovers; not as root
 #   $MemBar --test                          self-check of the pure rules (prints ok)
 #   $MemBar --snapshot OUT.png [QUERY]      debug builds: the panel as a PNG; env CROWD=1 HISTORY=1
-#                                           MARK=1 FIRSTRUN=1 DARK=0|1 add to it; LEGEND=1, MENUBAR=1
-#                                           or INSPECT=sample|files|env draw that instead
+#                                           MARK=1 FIRSTRUN=1 DARK=0|1 add to it; LEGEND=1 or
+#                                           INSPECT=sample|files|env draw that instead
 #   $MemBar --snapshot-details OUT.png GROUP [QUERY]   debug builds: the Details window as a PNG
 #   .build/debug/MemBar --drive OUTDIR      debug builds: the real app through a scripted run (about 40 s,
 #                                           it takes the focus): a PNG per step, drive.log. The bare binary
