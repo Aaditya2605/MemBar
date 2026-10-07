@@ -1,5 +1,5 @@
 #!/bin/bash
-# Makes build/MemBar.app around the SwiftPM binary (same pattern as ~/projects/Search).
+# Makes build/MemBar.app around the SwiftPM binary.
 #
 #   ./build.sh           release build, ad-hoc signed: runs on this Mac
 #   ./build.sh debug     debug build
@@ -8,10 +8,9 @@
 #   ./dmg.sh             the release DMG (see there)
 #
 #   open build/MemBar.app      run it (menu bar only, no Dock icon)
-#                              (~/Applications/MemBar.app, the copy that runs on this Mac, is not updated)
 #
 #   MemBar=build/MemBar.app/Contents/MacOS/MemBar; the flags (same as $MemBar --help):
-#   $MemBar --list                          groups as text, like appmem.py
+#   $MemBar --list                          groups as text
 #   $MemBar --json [--cpu]                  groups, RAM, swap, pressure as JSON; --cpu adds CPU %
 #   $MemBar --leftovers                     one per line; exit 1 if any
 #   $MemBar --stop [NAME ...] [--dry-run]   stop all or the named leftovers; not as root
@@ -25,9 +24,9 @@
 #                                           only: an .app has the installed app's settings
 #   $MemBar --help, -h                      every flag
 #   .build/debug/MemBar --agent-test HOME LABEL   debug test hook, not in --help: Disable and enable
-#                                           again a loaded com.appmem.test.* agent in HOME
+#                                           again a loaded com.membar.test.* agent in HOME
 #
-#   open appmem://report       copy a Markdown report (also appmem://open, appmem://refresh)
+#   open membar://report       copy a Markdown report (also membar://open, membar://refresh)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -42,7 +41,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # changed under it, and macOS does not keep the old code signature.
 cp ".build/$CONFIG/MemBar" "$APP/Contents/MacOS/MemBar.new"
 mv -f "$APP/Contents/MacOS/MemBar.new" "$APP/Contents/MacOS/MemBar"
-# The app icon: Claude Design option 5b, Resources/AppIcon.svg. After a change to the SVG, make the .icns again:
+# The app icon: Resources/AppIcon.svg. After a change to the SVG, make the .icns again:
 #   mkdir -p /tmp/AppIcon.iconset && for s in 16 32 128 256 512; do rsvg-convert -w $s -h $s Resources/AppIcon.svg -o /tmp/AppIcon.iconset/icon_${s}x${s}.png;
 #   rsvg-convert -w $((s*2)) -h $((s*2)) Resources/AppIcon.svg -o /tmp/AppIcon.iconset/icon_${s}x${s}@2x.png; done && iconutil -c icns /tmp/AppIcon.iconset -o Resources/AppIcon.icns
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -67,7 +66,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleURLTypes</key>
   <array><dict>
     <key>CFBundleURLName</key><string>com.huetic.membar</string>
-    <key>CFBundleURLSchemes</key><array><string>appmem</string></array>
+    <key>CFBundleURLSchemes</key><array><string>membar</string></array>
   </dict></array>
 </dict>
 </plist>

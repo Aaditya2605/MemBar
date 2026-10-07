@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "MemBar",
             path: "Sources/MemBar",
-            // Same as ~/projects/Search: the UI is main-thread by nature, and
+            // The UI is main-thread by nature, and
             // Swift 6 strict isolation adds only ceremony here.
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

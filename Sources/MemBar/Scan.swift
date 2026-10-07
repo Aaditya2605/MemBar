@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-// The core, ported from ~/projects/scripts/appmem.py. Pure rules first (testable
+// The core, ported from a Python prototype. Pure rules first (testable
 // without the UI, see selfTest), then the system reads, then Stop.
 
 struct Proc {
@@ -575,7 +575,7 @@ func selfTest() {
         precondition(summaryText(pg["Cursor"]!).hasSuffix("PID 10  node\n  300 MB  CPU –  PID 11  node  :3000"))
     }
 
-    do {  // MenuBar.swift: the text next to the icon, the quick menu's info line, Copy Report, appmem:// URLs
+    do {  // MenuBar.swift: the text next to the icon, the quick menu's info line, Copy Report, membar:// URLs
         let gb: Int64 = 1 << 30, fs = "\u{2007}"  // figure space: as wide as a digit
         precondition(short(850 << 20) == "850 MB" && short(999 << 20) == "999 MB" && short(1000 << 20) == "1.0 GB" && short(16 * gb) == "16.0 GB")
         precondition(padDigits("3.2 GB", 3) == fs + "3.2 GB" && padDigits("50 MB", 3) == fs + "50 MB" && padDigits("100%", 2) == "100%")
@@ -614,9 +614,9 @@ func selfTest() {
         precondition(r.split(separator: "\n").filter { $0.hasPrefix("| G") }.count == 15 && r.hasSuffix("\n\n_5 more groups: 5 MB_"))
         precondition(report(groups: [], sys: s, date: date).contains("\n- Leftovers: none\n"))
         // No URL stops anything: any web page can open one.
-        precondition(urlCommand("appmem://open") == .open && urlCommand("appmem://open/") == .open && urlCommand("appmem:open") == .open)
-        precondition(urlCommand("AppMem://Report") == .report && urlCommand("appmem://refresh?x=1") == .refresh)
-        precondition(urlCommand("appmem://stop") == nil && urlCommand("appmem://open/stop") == nil && urlCommand("https://open") == nil && urlCommand("appmem://") == nil)
+        precondition(urlCommand("membar://open") == .open && urlCommand("membar://open/") == .open && urlCommand("membar:open") == .open)
+        precondition(urlCommand("MemBar://Report") == .report && urlCommand("membar://refresh?x=1") == .refresh)
+        precondition(urlCommand("membar://stop") == nil && urlCommand("membar://open/stop") == nil && urlCommand("https://open") == nil && urlCommand("membar://") == nil)
         // In an extension: AppKit calls it only if Objective-C sees it, else no URL works.
         precondition(Delegate.instancesRespond(to: NSSelectorFromString("applicationWillFinishLaunching:")))
     }

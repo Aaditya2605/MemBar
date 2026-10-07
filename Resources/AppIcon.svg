@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Claude Design "membar app icon", option 5b (Paper): the menu bar glyph, 4 of 6 blocks lit. -->
+  <!-- MemBar app icon ("Paper"): the menu bar glyph, 4 of 6 blocks lit. -->
   <defs>
     <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fcfbf9"/>
