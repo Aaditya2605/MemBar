@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="380" viewBox="0 0 540 380">
+  <!-- The DMG window's background (dmg.sh). The icons sit at x 140 and 400, y 190, 128 pt. -->
+  <rect width="540" height="380" fill="#f5f4f1"/>
+  <text x="270" y="62" text-anchor="middle" font-family="Helvetica Neue, Helvetica, sans-serif" font-size="20" font-weight="600" fill="#1b1b1a">Drag MemBar to Applications</text>
+  <g fill="none" stroke="#8a8780" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M226 190 H312"/>
+    <path d="M298 176 L314 190 L298 204"/>
+  </g>
+  <text x="270" y="322" text-anchor="middle" font-family="Helvetica Neue, Helvetica, sans-serif" font-size="13" fill="#6b6964">Then open MemBar from Applications. It shows in the menu bar.</text>
+</svg>

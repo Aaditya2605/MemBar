@@ -3,6 +3,9 @@
 #
 #   ./build.sh           release build, ad-hoc signed: runs on this Mac
 #   ./build.sh debug     debug build
+#   SIGN_ID="Developer ID Application: …" ./build.sh
+#                        signed for other Macs, with the hardened runtime that notarization needs
+#   ./dmg.sh             the release DMG (see there)
 #
 #   open build/MemBar.app      run it (menu bar only, no Dock icon)
 #                              (~/Applications/MemBar.app, the copy that runs on this Mac, is not updated)
@@ -29,6 +32,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 CONFIG="${1:-release}"
+VERSION=0.1.1
 APP="build/MemBar.app"
 
 swift build -c "$CONFIG"
@@ -55,7 +59,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>com.huetic.membar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$(date +%Y%m%d%H%M)</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
@@ -69,5 +73,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+if [ -n "${SIGN_ID:-}" ]; then
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+else
+  codesign --force --sign - "$APP"  # ad hoc: runs only on this Mac, or after "Open Anyway"
+fi
 echo "built: $APP"
