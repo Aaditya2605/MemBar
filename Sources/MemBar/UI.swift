@@ -408,7 +408,8 @@ extension Color {
 /// Why a group has its orphan or leftover badge: the badge's tooltip (row and Details),
 /// and the first sentence of the leftover notification.
 func flagHelp(_ g: Group) -> String {
-    g.orphan ? orphanHelp : g.isSimulator ? "A device is booted and Simulator is not open"
+    g.orphan ? orphanHelp : g.deleted ? "Its program file is deleted: uninstalled or upgraded"
+        : g.isSimulator ? "A device is booted and Simulator is not open"
         : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open"
 }
 
