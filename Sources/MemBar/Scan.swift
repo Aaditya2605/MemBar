@@ -475,8 +475,6 @@ func selfTest() {
     precondition(sm.app == 90 * 16384 && sm.ram == 115 * 16384 && sm.cached == 40 * 16384 && sm.swap == 7)
     precondition(sm.pressure == .critical && sm.usedPct == 70 && SysMem().usedPct == 0 && SysMem(level: 3).pressure == .normal)
     precondition(Pressure(rawValue: 2)?.label == "Warning" && Pressure.warning.color == .orange && Pressure.critical.color == .red)
-    precondition(menuState(.critical, waste: 1).dot == .systemRed && menuState(.warning, waste: 1).dot == .systemOrange)
-    precondition(menuState(.normal, waste: 1).dot == .systemYellow && menuState(.normal, waste: 0).dot == nil)
     precondition(menuState(.normal, waste: 0).desc == "MemBar" && menuState(.normal, waste: 0).tip == "MemBar: no leftovers")
     precondition(menuState(.warning, waste: 1 << 30).desc == "MemBar, memory pressure warning, leftovers found")
     precondition(menuState(.warning, waste: 1 << 30).tip == "Memory pressure: Warning\nLeftovers use 1.00 GB")
@@ -564,26 +562,11 @@ func selfTest() {
         precondition(Delegate.instancesRespond(to: NSSelectorFromString("applicationWillFinishLaunching:")))
     }
 
-    do {  // MenuGraph.swift: the RAM Graph's samples, line and tooltip
-        let t0 = Date(timeIntervalSince1970: 1_000_000), gb: Int64 = 1 << 30, size = CGSize(width: 28, height: 14)
-        func s(_ sec: Double, _ ram: Int64 = 8 << 30) -> Sample { Sample(at: t0 + sec, ram: ram, groups: [:]) }
-        // One a minute: the open panel's (each 15 s) thinned, the closed ones (60 to 70 s apart) all kept; the newest 29.
-        precondition(graphSamples((0...40).map { s(Double($0) * 15) }).map(\.at) == (0...10).map { t0 + Double($0) * 60 })
-        let hour = (0..<60).map { s(Double($0) * 65) }, kept = graphSamples(hour)
-        precondition(kept.count == 29 && kept.first!.at == hour[31].at && kept.last!.at == hour[59].at)
-        precondition(graphSamples([]).isEmpty && graphSamples([s(0)]).count == 1)
-        // 0 to all the RAM on the height, 0.5 pt in for the line, on 0.5 pt steps; over the full width.
-        let pts = graphPoints([0, 8 * gb, 16 * gb, 20 * gb], top: 16 * gb, size: size)
-        precondition(pts.map(\.y) == [0.5, 7, 13.5, 13.5] && pts.map(\.x) == [0, 28.0 / 3, 56.0 / 3, 28])
-        precondition(graphPoints([gb], top: 16 * gb, size: size) == [CGPoint(x: 0, y: 1.5), CGPoint(x: 28, y: 1.5)])  // one: flat, full width
-        precondition(graphPoints(Array(repeating: 8 * gb, count: 29), top: 16 * gb, size: size).allSatisfy { $0.y == 7 })  // flat
-        precondition(graphPoints([], top: 16 * gb, size: size).isEmpty && graphPoints([gb], top: 0, size: size).isEmpty)
-        precondition(graphTip([s(0, 11 * gb), s(1680, 11 * gb + (307 << 20))], physical: 16 * gb) == "RAM used in the last 28 min: 11.0 GB to 11.3 GB of 16 GB")
-        precondition(graphTip([s(0, 11 * gb)], physical: 16 * gb) == "RAM used in the last 1 min: 11.0 GB of 16 GB")
-        precondition(menuBarText(.graph, sys: SysMem(level: 4), waste: gb) == "")  // the graph is the image, no text
-        // updateIcon keeps an image whose description is the state's: the graph must have the plain icon's.
-        let icon = Delegate.graphIcon(menuState(.warning, waste: gb), ram: [], top: 16 * gb, pressure: .warning)
-        precondition(icon.accessibilityDescription == menuState(.warning, waste: gb).desc && icon.size == NSSize(width: 48, height: 14))
+    do {  // UI.swift: the glyph. The nearest sixth of the RAM, any use lights one, never more than 6.
+        let gb: Int64 = 1 << 30
+        precondition([0, 1, 5, 8, 15, 16, 17].map { litBlocks($0 * gb, of: 16 * gb) } == [0, 1, 2, 3, 6, 6, 6])
+        precondition(litBlocks(1, of: 16 * gb) == 1 && litBlocks(gb, of: 0) == 0)
+        precondition(Delegate.glyphs.count == 7 && Delegate.glyphs.allSatisfy { $0.isTemplate && $0.size == NSSize(width: 29, height: 16) })
     }
 
     do {  // Export.swift: Save Report's CSV, one row per process; a name with a comma, a quote or a line break stays one field
