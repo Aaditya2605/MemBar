@@ -4,7 +4,7 @@ import Foundation
 // Orphans: dev servers, watchers and MCP servers that a terminal tab or an agent session
 // started and left running. When it ends they move to launchd (ppid 1), and their group is
 // their own name ("node") or, by the responsibility call, the app that is still open (the
-// terminal, the agent's app): never a leftover. Recall knows their app only if AppMem saw
+// terminal, the agent's app): never a leftover. Recall knows their app only if MemBar saw
 // it alive. Not waste unless Settings > Count Orphans as Leftovers is on: a server kept on
 // purpose looks the same.
 
@@ -15,7 +15,7 @@ let orphanHelp = "Started from a terminal or an agent that is gone, and still ru
 /// on purpose) that launchd adopted (ppid 1) but does not run as a job, and `detached`.
 /// Not one with a process on a live `terminal` under it: a session keeper that the name
 /// list misses (mosh-server), whose pty holds the user's shell and its vim.
-/// Never AppMem or its children: they are not in the walk.
+/// Never MemBar or its children: they are not in the walk.
 func orphans(_ procs: [pid_t: Proc], jobs: Set<pid_t>, detached: (pid_t) -> Bool, terminal: (pid_t) -> Bool,
              uid: uid_t = getuid(), me: pid_t = getpid()) -> Set<pid_t> {
     var kids: [pid_t: [pid_t]] = [:]
@@ -127,7 +127,7 @@ func orphanTest() {
         p(35, 1, "/opt/homebrew/bin/mosh-server"), p(36, 35, "/bin/zsh"), p(37, 36, "/opt/homebrew/bin/nvim"),  // too: its pty is live
         p(40, 1, "/opt/homebrew/bin/python3"),                         // still has its terminal
         p(50, 1, node, uid: 502),                                      // another user's
-        p(60, 1, "/Users/a/dev/AppMem"), p(61, 60, node),              // AppMem itself, its child
+        p(60, 1, "/Users/a/dev/MemBar"), p(61, 60, node),              // MemBar itself, its child
         p(70, 1, "/opt/homebrew/bin/deno"), p(71, 70, node, uid: 502), // a child of another user is not ours
         p(80, 1, "/Users/a/dev/srv"), p(81, 80, node),                 // an agent's, in its open app's group
         p(90, 1, "/opt/homebrew/bin/vite"),                            // in a leftover's group: Recall knows its app

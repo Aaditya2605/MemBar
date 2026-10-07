@@ -27,7 +27,7 @@ struct Alert: Equatable {
     enum Kind: String { case leftover, pressure, growth, limit }
     let kind: Kind
     var group: String? = nil
-    var stop = false  // a Stop button: a leftover that AppMem can stop, as the row's Stop
+    var stop = false  // a Stop button: a leftover that MemBar can stop, as the row's Stop
     let title: String, body: String
 }
 
@@ -122,7 +122,7 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
     /// nil outside an .app (the bare debug binary): there the center raises an exception.
     static var center: UNUserNotificationCenter? { Bundle.main.bundleIdentifier == nil ? nil : .current() }
 
-    /// At launch, before it ends: a click that launches AppMem comes here too.
+    /// At launch, before it ends: a click that launches MemBar comes here too.
     func start(_ model: Model, open: @escaping () -> Void) {
         self.model = model
         self.open = open
@@ -181,8 +181,8 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
                 // main-queue job (scan results, SIGTERM, the reopen after a quit) until it closes.
                 RunLoop.main.perform {
                     let a = NSAlert()
-                    a.messageText = "Notifications are off for AppMem"
-                    a.informativeText = "To allow them, open System Settings > Notifications > AppMem and turn on Allow Notifications."
+                    a.messageText = "Notifications are off for MemBar"
+                    a.informativeText = "To allow them, open System Settings > Notifications > MemBar and turn on Allow Notifications."
                     a.addButton(withTitle: "Open System Settings")
                     a.addButton(withTitle: "Cancel")
                     NSApp.activate(ignoringOtherApps: true)
@@ -195,7 +195,7 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    // macOS asks only while AppMem is the active app. With the panel open, it shows the same:
+    // macOS asks only while MemBar is the active app. With the panel open, it shows the same:
     // no banner, only Notification Center. Main queue: panelOpen is main-thread state.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -334,7 +334,7 @@ func alertsTest() {
     precondition(run([], 360) == [] && run([g("Slack", 2100)], 420) == ["limit Slack"])
     precondition(run([], 480) == [] && run([g("Slack", 2100), g("Other", 9000)], 540, with: off) == [] && st.over == ["Slack"])
     precondition(run([g("Slack", 2100)], 600) == [])  // crossed while off: turned on, it stays quiet
-    let d = UserDefaults(suiteName: "AppMem.selfTest")!  // registered only: in memory, no file
+    let d = UserDefaults(suiteName: "MemBar.selfTest")!  // registered only: in memory, no file
     d.register(defaults: ["limits": ["A": 2048, "B": 1 << 24, "C": 0, "D": 1 << 40, "E": "x"]])
     precondition(d.limits == ["A": 2048, "B": 1 << 24])  // 1 << 40 MB: limit * 9 traps
 

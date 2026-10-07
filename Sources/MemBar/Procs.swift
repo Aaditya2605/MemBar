@@ -60,7 +60,7 @@ func commandLine(_ path: String, _ argv: [String]) -> String {
 func othersHelp(_ g: Group, uid: uid_t = getuid()) -> String {
     let n = g.procs.filter { $0.uid != uid }.count
     if n == 0 { return "" }
-    return "\(n == g.procs.count ? "All" : "\(n) of \(g.procs.count)") processes run as another user (such as root). AppMem cannot stop them."
+    return "\(n == g.procs.count ? "All" : "\(n) of \(g.procs.count)") processes run as another user (such as root). MemBar cannot stop them."
 }
 
 /// Command lines, read only when a row is expanded, then cached by PID, start time and

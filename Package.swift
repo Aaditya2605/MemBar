@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppMem",
+    name: "MemBar",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "AppMem",
-            path: "Sources/AppMem",
+            name: "MemBar",
+            path: "Sources/MemBar",
             // Same as ~/projects/Search: the UI is main-thread by nature, and
             // Swift 6 strict isolation adds only ceremony here.
             swiftSettings: [.swiftLanguageMode(.v5)]

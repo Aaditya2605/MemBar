@@ -8,7 +8,7 @@ import SwiftUI
 /// Which menu items apply. Force Quit applies when Quit does.
 struct Allowed: Equatable { var quit = false, restart = false, pause = false, resume = false }
 
-/// May the menu signal `p`? Only this user's processes; never launchd, AppMem or its
+/// May the menu signal `p`? Only this user's processes; never launchd, MemBar or its
 /// children (a paused top would hang the scan); never the macOS group; Apple's own
 /// programs only in a third-party app's group (SIGTERM to loginwindow logs out); the iOS
 /// Simulator only by Stop, as simctl shuts devices down cleanly.
@@ -147,7 +147,7 @@ struct GroupMenu: View {
         Divider()
         Button("Reveal in Finder") { file.map(Actions.reveal) }.disabled(file == nil)
         Button("Copy Summary") { Actions.copy(summaryText(g)) }
-        Divider()  // what AppMem tells about this app
+        Divider()  // what MemBar tells about this app
         LimitMenu(g: g)  // Alerts.swift
         // Settings > Never Flagged lists the same names; Model rescans when the list changes.
         let ignored = UserDefaults.standard.ignored.contains(g.name)

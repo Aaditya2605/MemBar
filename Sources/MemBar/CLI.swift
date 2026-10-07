@@ -4,7 +4,7 @@ import Foundation
 // bar. --list and --test are in Scan.swift, --snapshot in UI.swift.
 
 private let usage = """
-    usage: AppMem [flag]          no flag: run the menu bar app
+    usage: MemBar [flag]          no flag: run the menu bar app
 
       --list                      groups as text
       --json [--cpu]              groups, RAM, swap and pressure as JSON (bytes);
@@ -106,8 +106,8 @@ private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group]
         procs = scan(top: top)
         addCPU(&procs, prev: prev, seconds: seconds)
     }
-    // The bare binary (.build/*/AppMem) has its own defaults domain: also the menu app's Never Flagged list.
-    let d = UserDefaults.standard, app = d.persistentDomain(forName: "com.officecommun.appmem")?["ignored"] as? [String] ?? []
+    // The bare binary (.build/*/MemBar) has its own defaults domain: also the menu app's Never Flagged list.
+    let d = UserDefaults.standard, app = d.persistentDomain(forName: "com.huetic.membar")?["ignored"] as? [String] ?? []
     return ignoring(group(procs, responsible: responsible), d.ignored + app)
 }
 
@@ -117,7 +117,7 @@ func runCLI(_ args: [String]) -> Int32? {
     guard let cmd = parseArgs(args) else { return nil }
     switch cmd {
     case .bad(let why):
-        fputs("AppMem: \(why)\n\n\(usage)", stderr)
+        fputs("MemBar: \(why)\n\n\(usage)", stderr)
         return 2
     case .help:
         print(usage, terminator: "")

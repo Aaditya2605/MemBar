@@ -95,7 +95,7 @@ extension Delegate {
 }
 
 #if DEBUG
-/// `MENUBAR=1 AppMem --snapshot OUT.png` (debug builds): the RAM Graph item, not the panel, at 2x
+/// `MENUBAR=1 MemBar --snapshot OUT.png` (debug builds): the RAM Graph item, not the panel, at 2x
 /// on a light and a dark menu bar. Rows: the live RAM (as HISTORY=1); the same with the leftover
 /// dot; a climb from 30% to 90% of the RAM at Warning; the same at Critical.
 func snapshotMenuBar(to path: String) {

@@ -180,7 +180,7 @@ enum Details {
     static func show(_ g: Group) {
         guard let d = NSApp.delegate as? Delegate else { return }
         let w = window ?? make()
-        w.title = "\(g.name) — AppMem"
+        w.title = "\(g.name) — MemBar"
         // A new view: sort, search and selection start fresh for the new group.
         let v = NSHostingView(rootView: DetailsView(model: d.model, id: g.id, name: g.name))
         v.sizingOptions = .minSize  // not the ideal size too: that would keep the user from making it smaller
@@ -213,7 +213,7 @@ enum Details {
 }
 
 #if DEBUG
-/// `AppMem --snapshot-details out.png GROUP [query]` (debug builds): the Details window's
+/// `MemBar --snapshot-details out.png GROUP [query]` (debug builds): the Details window's
 /// content with live data as a PNG. GROUP: a group name, any case.
 func snapshotDetails(to path: String, group: String, query: String) {
     snapshot(to: path, size: NSSize(width: 1060, height: 480)) { m in

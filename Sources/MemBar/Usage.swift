@@ -56,7 +56,7 @@ enum Usage {
     private static var saving = false
 
     static func start() {
-        // Saved stamps count as now: AppMem did not see the time it was not running, and an
+        // Saved stamps count as now: MemBar did not see the time it was not running, and an
         // app used then is not idle. The names carry over: an app open from launch on and
         // never brought to the front (Slack at login) reads as idle 2 h later.
         let now = Date().timeIntervalSince1970

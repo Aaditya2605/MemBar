@@ -19,7 +19,7 @@ final class Model: ObservableObject {
     var windowOpen = false { didSet { if windowOpen != oldValue, !panelOpen { schedule(); refresh() } } }  // Details: scans as the panel does
     private var open: Bool { panelOpen || windowOpen }
     private var timer: Timer?
-    private let queue = DispatchQueue(label: "appmem.scan", qos: .utility)
+    private let queue = DispatchQueue(label: "membar.scan", qos: .utility)
     private var top: [pid_t: Int64] = [:], topAt = Date.distantPast  // queue only
     private var prevCPU: [pid_t: UInt64] = [:], prevAt = Date.distantPast  // queue only
     private var prevIO: [pid_t: IO] = [:]  // queue only
@@ -135,7 +135,7 @@ struct Panel: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("AppMem").font(.headline)
+                    Text("MemBar").font(.headline)
                     Spacer()
                     if model.waste > 0 {  // the total and its action as one unit, a little apart from the tools
                         HStack(spacing: 6) {
@@ -158,9 +158,7 @@ struct Panel: View {
                     Text("RAM \(fmt(model.sys.ram)) of \(fmt(Int64(ProcessInfo.processInfo.physicalMemory)))")
                         .help("Memory Used in Activity Monitor: app, wired and compressed memory")
                     Text("Swap \(fmt(model.sys.swap))").help("Swap in use on disk")
-                    // The rows and the small-groups footer: a hidden macOS group has no line, so not in it.
-                    Text("Apps \(fmt((listed.shown + listed.small).reduce(0) { $0 + $1.mem }))")
-                        .help("Sum of the memory of all processes below")
+                    // No sum of the rows: footprints count compressed memory at full size, so it can pass the RAM.
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 MarkLine(model: model)
@@ -230,7 +228,7 @@ struct Panel: View {
                 .frame(width: width, alignment: .trailing).padding(.vertical, 4).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Sort by \(title.lowercased())")
+        .help("Sort by \(title.lowercased())" + (s == .memory ? ". Memory is the footprint, as in Activity Monitor: it counts compressed memory at its full size, so the rows can add up to more than the RAM used." : ""))
         .accessibilityAddTraits(sort == s ? .isSelected : [])
     }
 }
@@ -448,7 +446,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // total RAM use. A yellow dot means "leftovers found", orange or red memory pressure
     // (see menuState); the tooltip and the panel give the size.
     static let chip: NSImage = {
-        let i = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "AppMem")!
+        let i = NSImage(systemSymbolName: "memorychip", accessibilityDescription: "MemBar")!
         i.isTemplate = true
         return i
     }()
@@ -496,7 +494,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 }
 
 #if DEBUG
-/// `AppMem --snapshot out.png [query]` (debug builds): the panel with live data as
+/// `MemBar --snapshot out.png [query]` (debug builds): the panel with live data as
 /// a PNG, to check the layout without a click on the menu bar. `make`: the view to
 /// draw, from the filled model (Details draws its window this way too).
 func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height: 540), _ make: (Model) -> V) {
@@ -554,9 +552,9 @@ func writePNG(_ view: NSView, to path: String) {
 }
 
 extension Group {
-    /// `CROWD=1 AppMem --snapshot ...`: made-up groups with each badge (leftover, respawns,
+    /// `CROWD=1 MemBar --snapshot ...`: made-up groups with each badge (leftover, respawns,
     /// orphan, paused, ports), to check a crowded panel. Never stopped: a snapshot only draws.
-    /// The first process has AppMem's own PID, for a real age; the rest PIDs that cannot exist.
+    /// The first process has MemBar's own PID, for a real age; the rest PIDs that cannot exist.
     static var crowd: [Group] {
         let mb: Int64 = 1 << 20
         func ps(_ path: String, _ mem: Int64, _ n: Int = 1, ports: [UInt16] = [], stopped: Bool = false) -> [Proc] {

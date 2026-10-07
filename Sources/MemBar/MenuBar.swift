@@ -46,7 +46,7 @@ func report(groups: [Group], sys: SysMem, date: Date, physical: Int64 = Int64(Pr
     df.locale = Locale(identifier: "en_US_POSIX")
     df.dateFormat = "yyyy-MM-dd HH:mm"
     let left = groups.filter(\.leftover), top = groups.sorted { $0.mem > $1.mem }
-    var lines = ["## AppMem report, \(df.string(from: date))", "",
+    var lines = ["## MemBar report, \(df.string(from: date))", "",
                  "- RAM used: \(fmt(sys.ram)) of \(physical >> 30) GB",
                  "- Swap: \(fmt(sys.swap))",
                  "- Memory pressure: \(sys.pressure.label), \(sys.usedPct)%",
@@ -103,7 +103,7 @@ extension Model {
 private var showsWatch: NSKeyValueObservation?
 
 extension Delegate {
-    // Here, not in didFinishLaunching: the URL that launches AppMem comes before that.
+    // Here, not in didFinishLaunching: the URL that launches MemBar comes before that.
     func applicationWillFinishLaunching(_ note: Notification) {
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleURL(_:withReply:)),
                                                      forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
@@ -144,7 +144,7 @@ extension Delegate {
             i.target = self
             return i
         }
-        add("Open AppMem", #selector(openPanel))
+        add("Open MemBar", #selector(openPanel))
         add(infoLine(model.sys, physical: Int64(ProcessInfo.processInfo.physicalMemory)), nil)  // no action: disabled
         if model.waste > 0 {
             let left = model.groups.filter(\.leftover), i = add("Stop All Leftovers (\(short(model.waste)))", #selector(stopAllLeftovers))
@@ -154,7 +154,7 @@ extension Delegate {
         add("Copy Report", #selector(copyReport))
         add("Refresh", #selector(refreshNow), key: "r")
         menu.addItem(.separator())
-        add("Quit AppMem", #selector(NSApplication.terminate(_:)), key: "q").target = NSApp
+        add("Quit MemBar", #selector(NSApplication.terminate(_:)), key: "q").target = NSApp
         return menu
     }
 
@@ -164,7 +164,7 @@ extension Delegate {
     @objc func copyReport() { model.copyReport() }
     @objc func refreshNow() { model.refresh(force: true) }
 
-    /// ponytail: appmem://report that launches AppMem copies before the first scan, so with no
+    /// ponytail: appmem://report that launches MemBar copies before the first scan, so with no
     /// groups; open the URL again. A completion on Model.refresh would fix it.
     @objc func handleURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue, let cmd = urlCommand(s) else { return }

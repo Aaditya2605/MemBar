@@ -33,7 +33,7 @@ func notStopped(_ gs: [Group], _ stopped: [String: Set<pid_t>]) -> [Group] {
     gs.filter { !Set($0.procs.map(\.pid)).isSubset(of: stopped[$0.id] ?? []) }
 }
 
-/// When each leftover was first seen as one, by group id: AppMem's own clock, not process
+/// When each leftover was first seen as one, by group id: MemBar's own clock, not process
 /// age, kept only while auto-stop is on (Auto.check), so a fresh launch or auto-stop turned
 /// on never stops at once. A group that is not a leftover in this scan (it exited, its app
 /// opened, it is ignored) drops out, so its clock starts again. So does one with a paused
@@ -64,7 +64,7 @@ func autoStops(_ groups: [Group], since: [String: Date], after: TimeInterval?, s
 /// rule's start at the latest (`ruled`: name → the first scan that saw the rule), so a rule
 /// set on an app idle for hours does not quit it at once. Never when Usage has no time for
 /// it (unknown is not idle), never the frontmost app, never one with a paused process (it
-/// cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
+/// cannot answer the quit) other than what MemBar paused (`paused`: name → those PIDs; the
 /// quit resumes them, else Pause When in Background would keep it from ever quitting), never one that
 /// runs a VM (isVM: in use with no window, see restarts).
 /// `tried`: name → the last-front time of a quit already asked: one ask per idle stretch, so

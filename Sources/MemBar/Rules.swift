@@ -35,8 +35,8 @@ func ownProcs(_ g: Group, responsible: (pid_t) -> pid_t) -> [Proc] {
 /// the rule's limit, as the jobs it started do not leak with it. Not frontmost for 30 min, counted
 /// from the rule's start at the latest (`ruled`: name → the first scan that saw it), so a rule set
 /// on an app that is big and idle already waits too. A never-seen-frontmost app counts from the
-/// rule: AppMem watched it since then. Never the frontmost app, never one with a paused process
-/// (it cannot answer the quit) other than what AppMem paused (`paused`: name → those PIDs; the
+/// rule: MemBar watched it since then. Never the frontmost app, never one with a paused process
+/// (it cannot answer the quit) other than what MemBar paused (`paused`: name → those PIDs; the
 /// restart resumes them, else Pause When in Background would keep it from ever restarting), never
 /// an Apple app or a bare executable (`bundleID`: of the app at the group's .app), never one that runs
 /// a VM (isVM: used from the command line with no window, as Docker, or from a terminal's tab; a quit
@@ -65,7 +65,7 @@ func pauseTargets(_ g: Group, uid: uid_t = getuid(), me: pid_t = getpid(), respo
 /// Pause When in Background between scans. Main thread only, in Rules.
 struct PauseState {
     var clock: [String: Date] = [:]  // app name → when its wait last started: the first scan with the rule, or a resume
-    var paused: [String: Group] = [:]  // app name → the processes AppMem stopped: only these are resumed, not a Pause by hand
+    var paused: [String: Group] = [:]  // app name → the processes MemBar stopped: only these are resumed, not a Pause by hand
 
     /// Each scan: the apps to pause now, and the pauses to undo as their rule is gone. Paused: an open
     /// app (not a leftover, not ignored, no VM: `docker ps` and SSH would hang) with the rule, a
@@ -90,14 +90,14 @@ struct PauseState {
         return (pause, off)
     }
 
-    /// `name` came to the front or its row's menu opened: what AppMem paused of it. Its wait starts again.
+    /// `name` came to the front or its row's menu opened: what MemBar paused of it. Its wait starts again.
     mutating func resume(_ name: String, now: Date) -> Group? {
         guard let g = paused.removeValue(forKey: name) else { return nil }
         clock[name] = now
         return g
     }
 
-    /// AppMem quits: all it paused.
+    /// MemBar quits: all it paused.
     mutating func resumeAll() -> [Group] { defer { paused = [:] }; return Array(paused.values) }
 }
 
@@ -107,7 +107,7 @@ func loggedOnce(_ log: [Freed.Entry], _ e: Freed.Entry) -> [Freed.Entry] { logge
 
 let pauseWarning = "Paused apps cannot play audio, sync or receive messages"
 
-/// The row's symbols and their help, for an open app with a rule. `paused`: AppMem paused it now.
+/// The row's symbols and their help, for an open app with a rule. `paused`: MemBar paused it now.
 func ruleNotes(restart mb: Int?, pause: Bool, paused: Bool) -> [(symbol: String, help: String)] {
     (mb.map { [("arrow.clockwise.circle", "Restarts when its own processes are above \(limitText($0)) and it was not used for 30 min, at most once in 6 hours")] } ?? [])
         + (!pause ? [] : paused ? [("pause.circle.fill", "Paused in the background: it resumes when you switch to it. \(pauseWarning)")]
@@ -123,18 +123,18 @@ extension UserDefaults {
 enum Rules {
     private static var pauses = PauseState()
     private static var ruled: [String: Date] = [:]  // app name → the first scan that saw its Restart When Above rule
-    // ponytail: in RAM only, so an AppMem restart forgets the 6 h; the 30 min wait from launch still holds.
+    // ponytail: in RAM only, so an MemBar restart forgets the 6 h; the 30 min wait from launch still holds.
     private static var restarted: [String: Date] = [:]  // app name → the last restart that the rule tried
     private static var term: DispatchSourceSignal?
 
-    /// At launch: resume at once when the user switches to a paused app (or to its PWA, see Usage.inUse), and before AppMem exits.
+    /// At launch: resume at once when the user switches to a paused app (or to its PWA, see Usage.inUse), and before MemBar exits.
     static func start() {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
             Usage.inUse(note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication).forEach { resume($0) }
         }
         // queue nil: on the posting (main) thread, before the exit.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in resumeAll() }
-        // `kill` and `killall AppMem` skip willTerminate: post it, so its observers run (the resume above,
+        // `kill` and `killall MemBar` skip willTerminate: post it, so its observers run (the resume above,
         // the history save, --drive's restore), then exit as SIGTERM would. Not NSApp.terminate: a modal alert can hold it up.
         // ponytail: a crash or SIGKILL leaves them paused; the row's Resume or `kill -CONT` undoes it.
         signal(SIGTERM, SIG_IGN)
@@ -176,7 +176,7 @@ enum Rules {
         }
     }
 
-    /// App name → the PIDs AppMem paused: the rules that quit an app resume these first.
+    /// App name → the PIDs MemBar paused: the rules that quit an app resume these first.
     static var pausedPIDs: [String: Set<pid_t>] { pauses.paused.mapValues { Set($0.procs.map(\.pid)) } }
 
     static func resume(_ name: String) {
@@ -213,7 +213,7 @@ struct RuleMenus: View {
 
     var body: some View {
         // SwiftUI builds a context menu's items when it opens (checked: not with the row), so each open
-        // resumes the app if AppMem paused it: the user is about to act on it.
+        // resumes the app if MemBar paused it: the user is about to act on it.
         let _ = Rules.resume(g.name)
         if restartable(app.bundleIdentifier) {
             Picker("Restart When Above", selection: Binding(get: { restartRule(g.name) ?? 0 },
@@ -334,17 +334,17 @@ func rulesTest() {
     front = nil; last = t0 + 4 * m  // it left the front at 4:00
     precondition(step(at: 9 * m - 1).pause.isEmpty && step(at: 9 * m).pause == ["Slack"] && st.paused["Slack"]!.procs.map(\.pid) == [10, 11, 12])
     precondition(step(at: 20 * m).pause.isEmpty)  // never twice: a scan from before the SIGSTOP still reads it as running
-    // Switching to it resumes only what AppMem paused (not 16, paused by hand), and the wait starts again.
+    // Switching to it resumes only what MemBar paused (not 16, paused by hand), and the wait starts again.
     precondition(st.resume("Other", now: t0 + 21 * m) == nil && st.resume("Slack", now: t0 + 21 * m)!.procs.map(\.pid) == [10, 11, 12])
     precondition(st.paused.isEmpty && st.clock["Slack"] == t0 + 21 * m && st.resume("Slack", now: t0 + 22 * m) == nil)
     precondition(step(at: 26 * m - 1).pause.isEmpty && step(at: 26 * m).pause == ["Slack"])  // 5 min after the resume (the menu's)
-    // The rule turned off: resumed at once. A pause by hand only is not AppMem's to claim.
+    // The rule turned off: resumed at once. A pause by hand only is not MemBar's to claim.
     precondition(step(rules: [:], at: 27 * m) == ([], ["Slack"]) && st.paused.isEmpty && st.clock.isEmpty)
     var byHand = s
     for i in byHand.procs.indices { byHand.procs[i].stopped = true }
     precondition(step([byHand], at: 30 * m).pause.isEmpty && step([byHand], at: 40 * m).pause.isEmpty && st.paused.isEmpty)
     precondition(step(rules: ["Slack": false], at: 50 * m).pause.isEmpty && st.clock.isEmpty)  // false is off
-    // Quit while paused: forgotten. AppMem quits: everything it paused, once.
+    // Quit while paused: forgotten. MemBar quits: everything it paused, once.
     _ = step(at: 60 * m)
     precondition(step(at: 65 * m).pause == ["Slack"] && step([], at: 66 * m) == ([], []) && st.paused.isEmpty)
     var zoom = app("Zoom", 300)

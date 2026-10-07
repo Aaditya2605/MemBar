@@ -44,7 +44,7 @@ func ownerPath(_ p: Proc, top: pid_t, procs: [pid_t: Proc], owners: [pid_t: AppO
 /// The owner memory after a scan: each command-line process of `uid` whose group is an
 /// app, by today's rule or by the old memory (a child that a remembered process starts
 /// after its app quit is remembered too). The rest drop out: gone, reused, never an app's.
-/// ponytail: memory is in RAM only: an app that quit before AppMem started, or that
+/// ponytail: memory is in RAM only: an app that quit before MemBar started, or that
 /// started and quit between two scans (a minute with the panel closed), is not known.
 /// A process under a shell that outlives its app stays macOS's: the top is /bin/zsh.
 func remember(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner],

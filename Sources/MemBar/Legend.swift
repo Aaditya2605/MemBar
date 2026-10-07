@@ -44,7 +44,7 @@ struct BadgeLegend: View {
             line(change(grew), "The change since the mark. Green: it shrank.")
             line(HStack(spacing: 4) { Badge.bell(on: true); Badge.bell(on: false) }.accessibilityElement(children: .ignore).accessibilityLabel("Bell"),
                  "Alerts above its limit. Slashed: the alert is off.")
-            line(Badge.quitIdle, "Quit When Idle: AppMem asks it to quit when unused.")
+            line(Badge.quitIdle, "Quit When Idle: MemBar asks it to quit when unused.")
             line(Badge.rule(rules[0].symbol).accessibilityLabel("Restart"), "Restart When Above: it restarts above its limit when unused.")
             line(HStack(spacing: 4) { Badge.rule(rules[1].symbol); Badge.rule(pausedNow) }.accessibilityElement(children: .ignore).accessibilityLabel("Pause"),
                  "Pause When in Background: paused after 5 min in the background. Filled: paused now, its jobs still run.")
@@ -113,7 +113,7 @@ struct IntroCard: View {
 }
 
 #if DEBUG
-/// `LEGEND=1 AppMem --snapshot out.png`: the badge legend instead of the panel.
+/// `LEGEND=1 MemBar --snapshot out.png`: the badge legend instead of the panel.
 func snapshotLegend(to path: String) {
     snapshot(to: path, size: NSSize(width: 360, height: 520)) { _ in BadgeLegend().frame(maxHeight: .infinity, alignment: .top) }
 }
