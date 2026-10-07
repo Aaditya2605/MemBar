@@ -3,17 +3,17 @@ import SwiftUI
 
 // The launch agent behind a respawn (Recall names its launchd label): the plist for it, and
 // Disable, so Stop is not undone each time. Only this user's own agents, in ~/Library/LaunchAgents:
-// AppMem never changes files, never acts on /Library or /System agents or on Apple's labels, never as
+// MemBar never changes files, never acts on /Library or /System agents or on Apple's labels, never as
 // root. Disable is launchd's own override (bootout, then disable): the plist stays as it is, and
 // Settings > Disabled Launch Agents undoes it. UserDefaults key: "disabledAgents" ([String: String],
-// label → plist path, the agents AppMem disabled).
+// label → plist path, the agents MemBar disabled).
 
 /// The plist whose Label is `label`, from (path, contents) pairs in search order; nil: unknown.
 func plistPath(for label: String, in plists: [(path: String, dict: [String: Any])]) -> String? {
     plists.first { $0.dict["Label"] as? String == label }?.path
 }
 
-/// May AppMem disable or enable `label`? Only a plist right in `folder` (~/Library/LaunchAgents,
+/// May MemBar disable or enable `label`? Only a plist right in `folder` (~/Library/LaunchAgents,
 /// both with symlinks resolved): an agent of /Library or /System is other apps' and macOS's. Never
 /// Apple's labels, never as root (gui/0 is no user's session), never a label that would be a path.
 func mayToggle(_ label: String, plist: String?, folder: String, uid: uid_t = getuid()) -> Bool {
@@ -48,7 +48,7 @@ func readPlists(_ dir: String) -> [(path: String, dict: [String: Any])] {
     }
 }
 
-/// `label`'s plist: this user's folder first, then /Library's, which AppMem only reveals. A few small
+/// `label`'s plist: this user's folder first, then /Library's, which MemBar only reveals. A few small
 /// files, read when a menu that names the agent is built.
 func agentPlist(_ label: String, home: String = NSHomeDirectory()) -> String? {
     plistPath(for: label, in: readPlists(home + "/Library/LaunchAgents")) ?? plistPath(for: label, in: readPlists("/Library/LaunchAgents"))
@@ -71,7 +71,7 @@ func launchctl(_ steps: [[String]]) -> (done: Int, error: String?) {
 
 enum Agents {
     // One at a time: the list is read, changed and written back.
-    private static let queue = DispatchQueue(label: "appmem.agents", qos: .userInitiated)
+    private static let queue = DispatchQueue(label: "membar.agents", qos: .userInitiated)
 
     /// mayToggle with the real paths: a symlink in ~/Library/LaunchAgents to a /Library plist is not ours.
     static func mine(_ label: String, plist: String?, home: String = NSHomeDirectory()) -> Bool {
@@ -82,9 +82,9 @@ enum Agents {
     /// Disable or enable again, with the rule checked here too: the list can hold anything that
     /// `defaults write` put in it. nil: done; else why not. Blocking: off the main thread.
     static func set(disabled: Bool, label: String, plist: String, home: String = NSHomeDirectory()) -> String? {
-        guard mine(label, plist: plist, home: home) else { return "AppMem acts only on your own launch agents in ~/Library/LaunchAgents, not on Apple's." }
+        guard mine(label, plist: plist, home: home) else { return "MemBar acts only on your own launch agents in ~/Library/LaunchAgents, not on Apple's." }
         let r = launchctl(agentSteps(disable: disabled, label: label, plist: plist))
-        // The list is the override that AppMem set in launchd: in once `disable` ran, out once `enable` ran.
+        // The list is the override that MemBar set in launchd: in once `disable` ran, out once `enable` ran.
         if disabled ? r.done == 2 : r.done >= 1 {
             var l = UserDefaults.standard.disabledAgents
             l[label] = disabled ? plist : nil
@@ -97,7 +97,7 @@ enum Agents {
     static func confirmDisable(_ label: String, plist: String) {
         let a = NSAlert()
         a.messageText = "Disable launch agent \(label)?"
-        a.informativeText = "launchd stops it now and does not start it again, also after a restart. AppMem does not change or delete its file:\n"
+        a.informativeText = "launchd stops it now and does not start it again, also after a restart. MemBar does not change or delete its file:\n"
             + (plist as NSString).abbreviatingWithTildeInPath + "\n\nTo undo it: Settings > Disabled Launch Agents."
         a.addButton(withTitle: "Disable")
         a.addButton(withTitle: "Cancel")
@@ -139,7 +139,7 @@ struct AgentItems: View {
             .disabled(plist == nil)
             .help(plist ?? "No plist with the label \(label) in ~/Library/LaunchAgents or /Library/LaunchAgents")
         // No disabledAgents check: Disable clears the mark (Recall.forget), and a new mark names a job that
-        // launchd ran after Stop, so it is loaded again (enabled outside AppMem) and Disable works.
+        // launchd ran after Stop, so it is loaded again (enabled outside MemBar) and Disable works.
         if let plist, Agents.mine(label, plist: plist) {
             Button("Disable Launch Agent…") { Agents.confirmDisable(label, plist: plist) }
         }
@@ -207,16 +207,16 @@ func agentsTest() {
 }
 
 #if DEBUG
-/// `AppMem --agent-test HOME LABEL` (debug builds): the real lookup, rule, Disable and enable again,
+/// `MemBar --agent-test HOME LABEL` (debug builds): the real lookup, rule, Disable and enable again,
 /// for a test agent at HOME/Library/LaunchAgents that is loaded already, and the plist not changed.
 /// Only com.appmem.test.* labels: it must never act on a real agent.
 func agentTest(home: String, label: String) -> Int32 {
-    guard label.hasPrefix("com.appmem.test.") else { fputs("AppMem: --agent-test acts only on com.appmem.test.* labels\n", stderr); return 2 }
+    guard label.hasPrefix("com.appmem.test.") else { fputs("MemBar: --agent-test acts only on com.appmem.test.* labels\n", stderr); return 2 }
     var failed = 0
     func check(_ ok: Bool, _ what: String) { if !ok { failed += 1 }; print((ok ? "ok    " : "FAIL  ") + what) }
     func loaded() -> Bool { !output("/bin/launchctl", ["print", "gui/\(getuid())/\(label)"]).isEmpty }  // stdout only when found
     func disabled() -> Bool { String(decoding: output("/bin/launchctl", ["print-disabled", "gui/\(getuid())"]), as: UTF8.self).contains("\"\(label)\" => disabled") }
-    guard let plist = agentPlist(label, home: home) else { fputs("AppMem: no plist with the label \(label) in \(home)/Library/LaunchAgents\n", stderr); return 2 }
+    guard let plist = agentPlist(label, home: home) else { fputs("MemBar: no plist with the label \(label) in \(home)/Library/LaunchAgents\n", stderr); return 2 }
     let before = FileManager.default.contents(atPath: plist)
     check(Agents.mine(label, plist: plist, home: home) && !Agents.mine(label, plist: plist), "the rule takes it in HOME, not in the real home")
     check(loaded() && !disabled(), "loaded and enabled at the start")

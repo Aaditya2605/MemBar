@@ -111,7 +111,7 @@ extension Sparkline: Equatable {
 
 #if DEBUG
 extension History {
-    /// `HISTORY=1 AppMem --snapshot ...`: an hour of made-up samples around the live
+    /// `HISTORY=1 MemBar --snapshot ...`: an hour of made-up samples around the live
     /// numbers, so the badge, sparklines and Details chart show without an hour of waiting.
     /// The largest group grows from half its size, so it gets the badge.
     static func demo(_ groups: [Group], sys: SysMem) -> History {
@@ -136,7 +136,7 @@ extension History {
 }
 #endif
 
-/// `AppMem --test`: the history parts of the self-check.
+/// `MemBar --test`: the history parts of the self-check.
 func historySelfTest() {
     let t0 = Date(timeIntervalSince1970: 0), mb: Int64 = 1 << 20
     func series(_ minutes: Int, _ f: (Int) -> Double) -> [(at: Date, mem: Int64)] {

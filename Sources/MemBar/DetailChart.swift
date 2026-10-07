@@ -6,7 +6,7 @@ import SwiftUI
 // A view of its own: a hover redraws the header only, not the table (it reads threads per row).
 
 /// One group's memory over time, in runs: a new run where the group has no point (gone, under
-/// 50 MB, not measured) or where no sample came for 10 min (asleep, AppMem quit), so the chart
+/// 50 MB, not measured) or where no sample came for 10 min (asleep, MemBar quit), so the chart
 /// breaks its line there and draws no slope over a time it knows nothing about.
 /// ponytail: one 10 min gap for both ranges (a 24 h point is 5 min), so a shorter sleep in the
 /// last hour is a straight line.
@@ -64,7 +64,7 @@ struct DetailChart: View {
     var body: some View {
         let all = groupSeries(g.id, history.older + history.samples)
         if all.isEmpty {
-            Text("No memory history: AppMem keeps one for groups of 50 MB or more.")
+            Text("No memory history: MemBar keeps one for groups of 50 MB or more.")
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 6)
         } else {
@@ -175,7 +175,7 @@ struct HoverLayer: View {
     }
 }
 
-/// `AppMem --test`: the Details chart's series, its numbers and the hover.
+/// `MemBar --test`: the Details chart's series, its numbers and the hover.
 func detailChartTest() {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000), mb: Int64 = 1 << 20
     func s(_ at: TimeInterval, _ g: [String: Int64]) -> Sample { Sample(at: t0 + at, ram: 0, groups: g.mapValues { $0 * mb }) }

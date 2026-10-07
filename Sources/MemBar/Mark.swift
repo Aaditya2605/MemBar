@@ -148,7 +148,7 @@ struct ChangeText: View {
 
 #if DEBUG
 extension Mark {
-    /// `MARK=1 AppMem --snapshot ...`: a mark 12 min old around the live numbers. The
+    /// `MARK=1 MemBar --snapshot ...`: a mark 12 min old around the live numbers. The
     /// largest group grew 400 MB, the second shrank 1.2 GB, the third is new, two are gone.
     static func demo(_ groups: [Group], sys: SysMem) -> Mark {
         let big = groups.filter { $0.mem >= 10 << 20 }.sorted { $0.mem > $1.mem }

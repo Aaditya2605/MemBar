@@ -2,7 +2,7 @@ import AppKit
 import UserNotifications
 
 #if DEBUG
-// `AppMem --drive OUTDIR` (debug builds): the real app (status item, Delegate, popover, Model)
+// `MemBar --drive OUTDIR` (debug builds): the real app (status item, Delegate, popover, Model)
 // with a scripted scenario on the main run loop, for what --snapshot cannot reach: the status
 // item's click, keys in the popover window, Esc, the Details window, the quick menu, the
 // appmem:// handler and the notifications. A PNG of the window after each step, and one line
@@ -16,7 +16,7 @@ enum Drive {
 
     static func start(_ out: String) {
         // An .app reads the installed app's settings (same bundle id); the bare binary has its own.
-        guard Bundle.main.bundleIdentifier == nil else { fail("run the bare binary .build/debug/AppMem, not an .app") }
+        guard Bundle.main.bundleIdentifier == nil else { fail("run the bare binary .build/debug/MemBar, not an .app") }
         let d = UserDefaults.standard, domain = ProcessInfo.processInfo.processName
         // They act in each scan: a test run must not stop, quit, restart or pause the apps of this Mac.
         guard autoStopAfter(d.integer(forKey: "autoStop")) == nil, d.quitIdle.isEmpty, d.restartAbove.isEmpty,
@@ -38,7 +38,7 @@ enum Drive {
         Task { @MainActor in await run() }
     }
 
-    private static func fail(_ why: String) -> Never { fputs("AppMem: --drive: \(why)\n", stderr); exit(2) }
+    private static func fail(_ why: String) -> Never { fputs("MemBar: --drive: \(why)\n", stderr); exit(2) }
 
     @MainActor static func run() async {
         await pause(2)  // launch and the first scan
@@ -142,7 +142,7 @@ enum Drive {
         guard let g = d.model.groups.first(where: { $0.name != "macOS" }) else { return check(false, "a group for Details") }
         let n0 = scans
         Details.show(g)  // what the right-click menu's Show Details… calls
-        let w = NSApp.windows.first { $0.title == "\(g.name) — AppMem" }
+        let w = NSApp.windows.first { $0.title == "\(g.name) — MemBar" }
         check(await until(3) { w?.isVisible == true && !d.popover.isShown }, "Details shows for \(g.name), the popover closed")
         await pause(1.5)  // the table's first layout
         // Still open, panel to window: the timer's scans only, at most one in this time.
@@ -164,20 +164,20 @@ enum Drive {
         let m = d.quickMenu()
         m.update()  // validation: an item with no action is disabled
         note("quick menu: " + m.items.filter { !$0.isSeparatorItem }.map { "\($0.title)\($0.isEnabled ? "" : " (off)")" }.joined(separator: " | "))
-        check(m.items.first?.title == "Open AppMem" && m.items.first?.isEnabled == true, "the quick menu starts with Open AppMem")
+        check(m.items.first?.title == "Open MemBar" && m.items.first?.isEnabled == true, "the quick menu starts with Open MemBar")
         check(m.items.count > 1 && !m.items[1].isEnabled, "its info line is not a button: \(m.items.count > 1 ? m.items[1].title : "")")
         check(m.items.contains { $0.title.hasPrefix("Stop All") } == (d.model.waste > 0), "Stop All Leftovers only with leftovers")
-        check(m.items.filter { ["Copy Report", "Refresh", "Quit AppMem"].contains($0.title) && $0.isEnabled }.count == 3, "Copy Report, Refresh and Quit are on")
+        check(m.items.filter { ["Copy Report", "Refresh", "Quit MemBar"].contains($0.title) && $0.isEnabled }.count == 3, "Copy Report, Refresh and Quit are on")
     }
 
     /// 5. appmem:// as an Apple event to this process, so the handler that the app registered answers.
-    /// Not NSWorkspace.open: Launch Services would send it to the installed AppMem.
+    /// Not NSWorkspace.open: Launch Services would send it to the installed MemBar.
     @MainActor static func urls(_ d: Delegate) async {
         let n = scans, pb = NSPasteboard.general
         url("appmem://refresh")
         check(await until(5) { scans > n }, "appmem://refresh scans")  // a scan can take seconds on a busy Mac
         url("appmem://report")
-        let ok = await until(3) { pb.string(forType: .string)?.hasPrefix("## AppMem report") == true }
+        let ok = await until(3) { pb.string(forType: .string)?.hasPrefix("## MemBar report") == true }
         check(ok, "appmem://report copies a report: \(pb.string(forType: .string)?.split(separator: "\n").count ?? 0) lines")
         url("appmem://open")
         check(await until(3) { d.popover.isShown }, "appmem://open shows the popover")
@@ -242,9 +242,9 @@ enum Drive {
     @MainActor static func editing(_ w: NSWindow?) -> Bool { (w?.firstResponder as? NSTextView)?.isFieldEditor == true }
 
     /// The app that has the focus by the window server. A system alert (UserNotificationCenter) keeps
-    /// it from an app that the user did not click, so a window that AppMem makes key may not get it.
+    /// it from an app that the user did not click, so a window that MemBar makes key may not get it.
     static func frontmost() -> String {
-        NSWorkspace.shared.frontmostApplication.map { $0.processIdentifier == getpid() ? "AppMem" : $0.localizedName ?? "?" } ?? "none"
+        NSWorkspace.shared.frontmostApplication.map { $0.processIdentifier == getpid() ? "MemBar" : $0.localizedName ?? "?" } ?? "none"
     }
 
     @MainActor static func responder(_ w: NSWindow?) -> String { w?.firstResponder.map { String(describing: type(of: $0)) } ?? "none" }
@@ -265,12 +265,12 @@ enum Drive {
     /// `w` is key. Not counted as a failure while another app keeps the focus (see frontmost).
     /// ponytail: then that check is not made at all; run it again with no system alert on screen.
     @MainActor static func checkKey(_ w: NSWindow?, _ what: String) {
-        if w?.isKeyWindow != true, frontmost() != "AppMem" { return note("skip  \(what): \(frontmost()) has the focus") }
+        if w?.isKeyWindow != true, frontmost() != "MemBar" { return note("skip  \(what): \(frontmost()) has the focus") }
         check(w?.isKeyWindow == true, what)
     }
 
     /// A check after keys: if another app took the focus (the person at the Mac clicked), the
-    /// keys went nowhere, and a failure says nothing about AppMem.
+    /// keys went nowhere, and a failure says nothing about MemBar.
     @MainActor static func checkKeys(_ ok: Bool, _ what: String) {
         if !ok, focusLost { return note("skip  \(what): \(frontmost()) took the focus, so the keys went nowhere") }
         check(ok, what)

@@ -48,7 +48,7 @@ extension Model {
             if #available(macOS 15, *) { panel.showsContentTypes = true }
             panel.isExtensionHidden = false  // the extension is the format
             panel.showsTagField = false  // its tags would be ours to set
-            panel.nameFieldStringValue = "AppMem Report \(df.string(from: date)).md"  // with its extension: else ".05" of the time reads as one
+            panel.nameFieldStringValue = "MemBar Report \(df.string(from: date)).md"  // with its extension: else ".05" of the time reads as one
             NSApp.activate(ignoringOtherApps: true)  // else the panel opens behind the frontmost app
             // begin, not runModal: a modal loop inside this main-queue block holds back every other
             // main-queue job (scans, pressure, SIGTERM, the reopen after a quit) until the panel closes.

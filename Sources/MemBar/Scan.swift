@@ -11,7 +11,7 @@ struct Proc {
     var cpuTime: UInt64 = 0  // user + system CPU time since start, in ns
     var cpu: Double = 0  // % of one core since the previous scan
     var ports: [UInt16] = []  // TCP ports it listens on, read only while the panel is open
-    var stopped = false  // SIGSTOP: paused by AppMem, a debugger or ctrl-Z in a shell
+    var stopped = false  // SIGSTOP: paused by MemBar, a debugger or ctrl-Z in a shell
     var peak: Int64 = 0  // the most memory since it started; 0 when not readable (other users)
     var io = IO()  // energy and disk counters, and their rates since the previous scan (Energy.swift)
     var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
@@ -82,7 +82,7 @@ func openApps<S: Sequence>(_ paths: S) -> Set<String> where S.Element == String 
 
 /// ponytail: loose name match, as in the prototype, but by whole words: "claude" ~
 /// "claude helper", "opencode" ~ "ai.opencode.desktop". The prototype's plain
-/// substring match let "xcode" hide "Code", and "appmem" hide "AppMemTestApp".
+/// substring match let "xcode" hide "Code", and "membar" hide "MemBarTestApp".
 /// A helper .app that still runs counts as its app being open.
 func isOpen(_ name: String, _ open: Set<String>) -> Bool {
     let n = name.lowercased()
@@ -307,7 +307,7 @@ func stop(_ g: Group) {
 
 // MARK: - Command line
 
-/// `AppMem --list`: the prototype's output, to compare the two.
+/// `MemBar --list`: the prototype's output, to compare the two.
 func printGroups() {
     var procs = scan(top: topMem())
     addPorts(&procs, listenPorts(procs))
@@ -331,7 +331,7 @@ private extension String {
     func leftPad(_ n: Int) -> String { String(repeating: " ", count: max(0, n - count)) + self }
 }
 
-/// `AppMem --test`: asserts for the pure rules.
+/// `MemBar --test`: asserts for the pure rules.
 func selfTest() {
     precondition(parseMem("1241M") == 1241 << 20 && parseMem("1.5G+") == 1536 << 20 && parseMem("512K") == 512 << 10)
     precondition(appOf("/Users/a/Library/Application Support/Cursor/User/x/bin/cursor-agent") == ("Cursor", true))
@@ -350,7 +350,7 @@ func selfTest() {
     precondition(open == ["claude", "claude helper"])
     precondition(isOpen("Claude", open) && !isOpen("Cursor", open))
     precondition(isOpen("ai.opencode.desktop", ["opencode"]) && isOpen("Code", ["visual studio code"]))
-    precondition(!isOpen("Code", ["xcode"]) && !isOpen("AppMemTestApp", ["appmem"]))
+    precondition(!isOpen("Code", ["xcode"]) && !isOpen("MemBarTestApp", ["membar"]))
     let runtime = "/Library/Developer/CoreSimulator/Volumes/iOS_23A/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.0.simruntime/Contents/Resources/RuntimeRoot"
     precondition(openApps(["/Applications/Foo.app/Wrapper/Foo.app/Foo"]) == ["foo"] && openApps([runtime + "/Applications/Maps.app/Maps"]).isEmpty)
     let xcode = "/Applications/Xcode.app/Contents/", agent = "/Users/a/Library/Application Support/Cursor/node"
@@ -477,8 +477,8 @@ func selfTest() {
     precondition(Pressure(rawValue: 2)?.label == "Warning" && Pressure.warning.color == .orange && Pressure.critical.color == .red)
     precondition(menuState(.critical, waste: 1).dot == .systemRed && menuState(.warning, waste: 1).dot == .systemOrange)
     precondition(menuState(.normal, waste: 1).dot == .systemYellow && menuState(.normal, waste: 0).dot == nil)
-    precondition(menuState(.normal, waste: 0).desc == "AppMem" && menuState(.normal, waste: 0).tip == "AppMem: no leftovers")
-    precondition(menuState(.warning, waste: 1 << 30).desc == "AppMem, memory pressure warning, leftovers found")
+    precondition(menuState(.normal, waste: 0).desc == "MemBar" && menuState(.normal, waste: 0).tip == "MemBar: no leftovers")
+    precondition(menuState(.warning, waste: 1 << 30).desc == "MemBar, memory pressure warning, leftovers found")
     precondition(menuState(.warning, waste: 1 << 30).tip == "Memory pressure: Warning\nLeftovers use 1.00 GB")
 
     // Usage: idle apps and leftover age.
@@ -500,7 +500,7 @@ func selfTest() {
         let cursor = byName["Cursor"]!, weather = byName["Weather"]!
         precondition(allowed(cursor, app: false, uid: 501, me: 99) == Allowed(quit: true, pause: true))
         precondition(allowed(cursor, app: false, uid: 502, me: 99) == Allowed())  // other users
-        precondition(!maySignal(procs[10]!, in: cursor, uid: 501, me: 10) && !maySignal(procs[11]!, in: cursor, uid: 501, me: 10))  // AppMem, its child
+        precondition(!maySignal(procs[10]!, in: cursor, uid: 501, me: 10) && !maySignal(procs[11]!, in: cursor, uid: 501, me: 10))  // MemBar, its child
         precondition(allowed(byName["macOS"]!, app: true, uid: 501, me: 99) == Allowed())  // even with an app
         precondition(!maySignal(procs[1]!, in: cursor, uid: 501, me: 99))  // launchd, in any group
         precondition(allowed(byName["iOS Simulator"]!, app: false, uid: 501, me: 99) == Allowed())
@@ -535,7 +535,7 @@ func selfTest() {
         rg.append(Group(name: "A|B", isApp: false, procs: [Proc(pid: 70, ppid: 1, uid: getuid(), path: "/t", mem: 5 << 20, stopped: true)]))
         let date = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 3, hour: 14, minute: 5))!
         precondition(report(groups: rg, sys: s, date: date, physical: 16 * gb, flags: { $0.name == "Claude" ? ["idle"] : [] }) == """
-            ## AppMem report, 2026-10-03 14:05
+            ## MemBar report, 2026-10-03 14:05
 
             - RAM used: 11.10 GB of 16 GB
             - Swap: 0 MB
@@ -740,7 +740,7 @@ func selfTest() {
     precondition(visible(mix, hideSmall: true, showMacOS: true).shown.map(\.name) == ["Claude", "macOS", "TinyLeft"])
     precondition(visible(mix, hideSmall: true, showMacOS: false).small.map(\.name) == ["Tiny"])
     precondition(visible(mix, hideSmall: false, showMacOS: false).shown.count == 3)
-    let hid = visible(mix, hideSmall: true, showMacOS: false)  // the header's Apps total sums both: no macOS in it
+    let hid = visible(mix, hideSmall: true, showMacOS: false)  // a hidden macOS is in neither list
     precondition((hid.shown + hid.small).map(\.name).sorted() == ["Claude", "Tiny", "TinyLeft"])
     var tinyPaused = mix[2]
     tinyPaused.procs[0].stopped = true  // paused from the right-click menu: it must stay findable
@@ -756,7 +756,7 @@ func selfTest() {
     do {  // Auto.swift: auto-stop, Quit When Idle, the log. Fake data only: these rules act.
         let t0 = Date(timeIntervalSince1970: 1_000_000), m: TimeInterval = 60
         precondition(autoStopAfter(10) == 600 && autoStopAfter(60) == 3600 && autoStopAfter(0) == nil && autoStopAfter(5) == nil)
-        // The clock starts at first sight, not at process start: a fresh AppMem stops nothing at once.
+        // The clock starts at first sight, not at process start: a fresh MemBar stops nothing at once.
         let c0 = leftoverClock(groups, since: [:], now: t0)
         precondition(c0 == ["Cursor|true": t0, "iOS Simulator|false": t0])
         precondition(autoStops(groups, since: c0, after: 600, simulator: true, now: t0, uid: 501).isEmpty)

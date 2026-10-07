@@ -37,7 +37,7 @@ func envText(_ env: [(name: String, value: String)], show: Bool) -> String {
 // MARK: - System reads
 
 /// A tool's output for the window: its stdout; else its stderr (sample's "cannot examine process");
-/// else a note. After `timeout` s it gets SIGTERM: AppMem started it, it is the only one signalled.
+/// else a note. After `timeout` s it gets SIGTERM: MemBar started it, it is the only one signalled.
 /// Off the main thread: it waits for the tool.
 /// ponytail: stderr is read after stdout ends, so a tool that fills the stderr pipe (64 KB) first
 /// would wait for ever; sample and lsof write a few lines there.
@@ -116,7 +116,7 @@ enum Inspect {
         }
     }
 
-    /// Closed: out of `windows`, so AppMem holds it no more (AppKit frees it when it wants). Async: AppKit is still in its close.
+    /// Closed: out of `windows`, so MemBar holds it no more (AppKit frees it when it wants). Async: AppKit is still in its close.
     private final class Window: NSWindow {
         override func close() {
             super.close()
@@ -203,7 +203,7 @@ struct InspectText: NSViewRepresentable {
 }
 
 #if DEBUG
-/// `INSPECT=sample|files|env AppMem --snapshot out.png` (debug builds): an Inspect window of AppMem
+/// `INSPECT=sample|files|env MemBar --snapshot out.png` (debug builds): an Inspect window of MemBar
 /// itself as a PNG. sample shows its progress: the snapshot draws after 1 s, the sample takes 3.
 func snapshotInspect(to path: String, _ what: String) {
     let k = Inspect.Kind.allCases.first { "\($0)" == what } ?? .env
@@ -211,10 +211,10 @@ func snapshotInspect(to path: String, _ what: String) {
 }
 
 extension Drive {
-    /// 3b. Inspect on AppMem's own process: two windows at once, their text loads, ⌘W and the
-    /// close button close them, and AppMem drops them (weak refs only here).
+    /// 3b. Inspect on MemBar's own process: two windows at once, their text loads, ⌘W and the
+    /// close button close them, and MemBar drops them (weak refs only here).
     @MainActor static func inspect() async {
-        guard let me = scan(top: [:])[getpid()] else { return check(false, "AppMem's own process for Inspect") }
+        guard let me = scan(top: [:])[getpid()] else { return check(false, "MemBar's own process for Inspect") }
         Inspect.open(me, .env)
         Inspect.open(me, .files)
         let ws: [() -> NSWindow?] = Inspect.windows.sorted { $0.title < $1.title }.map { w in { [weak w] in w } }
@@ -233,10 +233,10 @@ extension Drive {
         if let w = ws[1](), byKey { await press(Key(chars: "w", code: 13, mods: .command), w) } else { ws[1]()?.performClose(nil) }
         ws[0]()?.performClose(nil)
         // Not "freed": AppKit decides when a closed window goes. On macOS 26.6 even a plain NSWindow
-        // that was never shown stays in NSApp.windows (tested in a bare app), so only AppMem's part counts.
+        // that was never shown stays in NSApp.windows (tested in a bare app), so only MemBar's part counts.
         let closed = await until(3) { ws.allSatisfy { $0()?.isVisible != true } && Inspect.windows.isEmpty }
         let state = ws.map { $0().map { $0.isVisible ? "open" : "closed" } ?? "freed" }
-        check(closed, "closed (\(byKey ? "⌘W" : "not key: close button"), close button), AppMem holds neither: \(state), \(Inspect.windows.count) in the set")
+        check(closed, "closed (\(byKey ? "⌘W" : "not key: close button"), close button), MemBar holds neither: \(state), \(Inspect.windows.count) in the set")
     }
 }
 #endif

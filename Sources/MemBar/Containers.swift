@@ -102,7 +102,7 @@ final class Containers: ObservableObject {
     @Published private(set) var vm: String?
     var watching: Set<String> = []  // the expanded VM rows on screen
     private var at = Date.distantPast, busy = false
-    private let queue = DispatchQueue(label: "appmem.docker", qos: .utility)
+    private let queue = DispatchQueue(label: "membar.docker", qos: .utility)
 
     /// After each scan (`groups`) and when a VM row opens. docker stats is a process start and
     /// about 2 s: only with the panel open and the VM's row open, at most every 15 s.
@@ -251,7 +251,7 @@ func containersTest() {
 
 #if DEBUG
 extension Containers {
-    /// `CROWD=1 AppMem --snapshot out.png pid:900201`: a made-up "Linux VM" group, opened by the
+    /// `CROWD=1 MemBar --snapshot out.png pid:900201`: a made-up "Linux VM" group, opened by the
     /// search, with containers. A snapshot has no popover, so it never runs docker.
     static func demo() -> Group {
         let mb: Int64 = 1 << 20

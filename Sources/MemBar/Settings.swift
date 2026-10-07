@@ -86,8 +86,8 @@ struct SettingsMenu: View {
             Divider()
             // Async: a popover shown while the menu closes can close at once.
             Button("What the Badges Mean") { DispatchQueue.main.async { legend = true } }
-            Button("About AppMem") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
-            Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            Button("About MemBar") { NSApp.orderFrontStandardAboutPanel(nil) }  // version from Info.plist
+            Button("Quit MemBar") { NSApp.terminate(nil) }.keyboardShortcut("q")
         } label: {
             Image(systemName: "gearshape")
         }
@@ -107,7 +107,7 @@ struct SettingsMenu: View {
         }
         // SwiftUI fills the menu only when it first opens, so until then its ⌘Q
         // does nothing. A hidden button still takes the shortcut.
-        .background { Button("Quit AppMem") { NSApp.terminate(nil) }.keyboardShortcut("q").hidden() }
+        .background { Button("Quit MemBar") { NSApp.terminate(nil) }.keyboardShortcut("q").hidden() }
     }
 
     func setLogin(_ on: Bool) {

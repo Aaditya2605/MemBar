@@ -40,9 +40,9 @@ struct SysMem {
 func menuState(_ p: Pressure, waste: Int64) -> (dot: NSColor?, desc: String, tip: String) {
     let dot: NSColor? = p == .critical ? .systemRed : p == .warning ? .systemOrange : waste > 0 ? .systemYellow : nil
     let level = p == .normal ? nil : p.label
-    let desc = ["AppMem", level.map { "memory pressure \($0.lowercased())" }, waste > 0 ? "leftovers found" : nil]
+    let desc = ["MemBar", level.map { "memory pressure \($0.lowercased())" }, waste > 0 ? "leftovers found" : nil]
     let tip = [level.map { "Memory pressure: \($0)" }, waste > 0 ? "Leftovers use \(fmt(waste))" : nil].compactMap { $0 }
-    return (dot, desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "AppMem: no leftovers" : tip.joined(separator: "\n"))
+    return (dot, desc.compactMap { $0 }.joined(separator: ", "), tip.isEmpty ? "MemBar: no leftovers" : tip.joined(separator: "\n"))
 }
 
 /// Header row: where the RAM goes (RAMBar.swift), then the pressure with a dot colored as the

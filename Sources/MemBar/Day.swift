@@ -100,8 +100,8 @@ extension History {
 /// sparkline and growth check start again.
 enum HistoryFile {
     static let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("AppMem/history.json")
-    private static let queue = DispatchQueue(label: "appmem.history", qos: .background)
+        .appendingPathComponent("AppMem/history.json")  // the old name: the history carries over
+    private static let queue = DispatchQueue(label: "membar.history", qos: .background)
     private static var latest: History?  // the last scan's: what the save at quit writes
     private static var savedAt = Date()  // set at the first scan: the first write comes 5 min after it
     #if DEBUG
@@ -149,7 +149,7 @@ struct PeaksMenu: View {
     }
 }
 
-/// `AppMem --test`: the 24 h history, its file and the peaks.
+/// `MemBar --test`: the 24 h history, its file and the peaks.
 func dayTest() {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000), mb: Int64 = 1 << 20  // a 5 min slot starts at t0
     func s(_ at: TimeInterval, ram: Int64 = 0, _ g: [String: Int64] = [:]) -> Sample {
