@@ -7,7 +7,7 @@ Activity Monitor shows processes such as `node`, `Claude Helper` or `com.apple.W
 - 19 Cursor processes (2.1 GB) that continued to run after Cursor quit.
 - A headless iOS simulator (3.2 GB) that an agent started and did not shut down.
 
-**Status:** v0.1.1, pre-1.0. One person makes it. The app is not notarized, and it is not sandboxed (see [Privacy and data](#privacy-and-data)). Some actions are not yet tested by a person on real apps, for example the rules over many hours.
+**Status:** v0.1.1, pre-1.0. One person makes it. The app is signed with a Developer ID and notarized by Apple. It is not sandboxed (see [Privacy and data](#privacy-and-data)). Some actions are not yet tested by a person on real apps, for example the rules over many hours.
 
 <!-- TODO: add a screenshot or a short GIF of the panel. Use made-up data (CROWD=1), not real process names. -->
 
@@ -28,8 +28,7 @@ You need macOS 14 or later.
 
 1. Download `MemBar-0.1.1.dmg` from [Releases](https://github.com/Aaditya2605/appmem/releases/latest).
 2. Open the DMG, then drag MemBar to Applications.
-3. Open MemBar from Applications. macOS stops it the first time, because the app is not notarized.
-4. Open **System Settings > Privacy & Security**, then click **Open Anyway**.
+3. Open MemBar from Applications. It shows in the menu bar, not in the Dock.
 
 The DMG is for Macs with Apple silicon. On an Intel Mac, build from source.
 
@@ -105,7 +104,7 @@ Run `--help` for all the flags. The URLs `appmem://open`, `appmem://refresh` and
 
 ## Limitations
 
-- The app is signed ad hoc and not notarized.
+- A build from source is signed ad hoc, so it runs only on the Mac that built it.
 - "Open" is a loose name match by whole words. An app with an unusual process name can look like a leftover. Right-click > Never Flag stops this.
 - Chromium tabs show only "Renderer", not the site.
 - Power is CPU energy only. It is not Activity Monitor's Energy Impact.

@@ -162,6 +162,7 @@ A word in the panel's search that filters, any case: `leftover`, `orphan`, `paus
 - **The GUI driver only looks:** `--drive` runs only as the bare debug binary (an `.app` shares the installed app's settings) and refuses to start while Auto-Stop, Quit When Idle, Restart When Above or Pause When in Background is on. It never clicks Stop, Quit or Pause, tracks no menu, posts no notification, reads the history file without writing it, and puts its defaults and the clipboard back at the end.
 - **Notifications ask for permission only when a toggle is turned on.** Denied: the toggle goes off and a dialog says where to allow them.
 - **Build:** use the same pattern as `~/projects/Search` (Swift Package + `build.sh` that makes the `.app`).
+- **Release:** `./dmg.sh` with `SIGN_ID` (a Developer ID Application identity) and `NOTARY_PROFILE` (a `notarytool` keychain profile): the app gets the hardened runtime and a secure timestamp; the DMG is signed, notarized and stapled. The ticket on the DMG covers the app inside. Check with `spctl --assess --type open --context context:primary-signature -v` ("Notarized Developer ID"). v0.1.1 was the first notarized release. Apple silicon only: no universal build yet.
 - **Renamed from AppMem on 2026-10-07:** the app, its process, its text and the Swift target. The `appmem://` URLs, the `com.appmem.test.*` agent labels and `~/Library/Application Support/AppMem/` keep the old name, so scripts and the history carry over.
 - **Bundle ID `com.huetic.membar`,** as the other huetic apps. Before 2026-10-07 it was `com.officecommun.appmem`, copied from Search: not a domain the user owns. The settings were copied to the new ID once, by hand (`defaults export`/`import`); the app has no migration code, as no other Mac ran it.
 
@@ -175,4 +176,3 @@ A word in the panel's search that filters, any case: `leftover`, `orphan`, `paus
 - Docker's current context is not read: with two VMs, the containers can show under the wrong one.
 - A crash or SIGKILL of MemBar leaves the apps it paused paused (the row's Resume or `kill -CONT` undoes it).
 - Android SDK in another folder: only the default `~/Library/Android/sdk/emulator/` is matched.
-- A signed and notarized build: `build.sh` signs ad hoc, so it runs only on this Mac.
