@@ -1,3 +1,5 @@
+<p align="center"><img src="Resources/AppIcon.svg" width="128" alt="MemBar app icon"></p>
+
 # MemBar
 
 See the memory of each Mac app in the menu bar, and stop the processes that quit apps leave behind.
@@ -7,9 +9,9 @@ Activity Monitor shows processes such as `node`, `Claude Helper` or `com.apple.W
 - 19 Cursor processes (2.1 GB) that continued to run after Cursor quit.
 - A headless iOS simulator (3.2 GB) that an agent started and did not shut down.
 
-**Status:** v0.1.1, pre-1.0. One person makes it. The app is signed with a Developer ID and notarized by Apple. It is not sandboxed (see [Privacy and data](#privacy-and-data)). Some actions are not yet tested by a person on real apps, for example the rules over many hours.
+**Status:** v0.1.2, pre-1.0. One person makes it. The app is signed with a Developer ID and notarized by Apple. It is not sandboxed (see [Privacy and data](#privacy-and-data)). Some actions are not yet tested by a person on real apps, for example the rules over many hours.
 
-<!-- TODO: add a screenshot or a short GIF of the panel. Use made-up data (CROWD=1), not real process names. -->
+<p align="center"><img src="docs/panel.png" width="400" alt="The MemBar panel: the RAM bar and memory pressure at the top, then the apps by memory, with a Cursor leftover and a node orphan that each have a Stop button"></p>
 
 ## Highlights
 
@@ -26,7 +28,7 @@ You need macOS 14 or later.
 
 ### Download
 
-1. Download `MemBar-0.1.1.dmg` from [Releases](https://github.com/Aaditya2605/appmem/releases/latest).
+1. Download `MemBar-0.1.2.dmg` from [Releases](https://github.com/Aaditya2605/appmem/releases/latest).
 2. Open the DMG, then drag MemBar to Applications.
 3. Open MemBar from Applications. It shows in the menu bar, not in the Dock.
 

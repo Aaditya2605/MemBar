@@ -32,7 +32,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 CONFIG="${1:-release}"
-VERSION=0.1.1
+VERSION=0.1.2
 APP="build/MemBar.app"
 
 swift build -c "$CONFIG"
