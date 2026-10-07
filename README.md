@@ -28,7 +28,7 @@ You need macOS 14 or later.
 
 ### Download
 
-1. Download `MemBar-0.1.2.dmg` from [Releases](https://github.com/Aaditya2605/appmem/releases/latest).
+1. Download `MemBar-0.1.2.dmg` from [Releases](https://github.com/Aaditya2605/MemBar/releases/latest).
 2. Open the DMG, then drag MemBar to Applications.
 3. Open MemBar from Applications. It shows in the menu bar, not in the Dock.
 
@@ -39,8 +39,8 @@ The DMG is for Macs with Apple silicon. On an Intel Mac, build from source.
 You need Xcode 16 or later (Swift 6).
 
 ```bash
-git clone https://github.com/Aaditya2605/appmem.git
-cd appmem
+git clone https://github.com/Aaditya2605/MemBar.git
+cd MemBar
 ./build.sh
 open build/MemBar.app
 ```
@@ -94,12 +94,12 @@ The app is also a command-line tool for scripts and agent hooks:
 | `--stop [NAME ...] [--dry-run]` | Stop all leftovers, or only the named ones. |
 | `--test` | Run the self-check of the rules. It prints `ok`. |
 
-Run `--help` for all the flags. The URLs `appmem://open`, `appmem://refresh` and `appmem://report` open the panel, scan again or copy a Markdown report. No URL stops a process.
+Run `--help` for all the flags. The URLs `membar://open`, `membar://refresh` and `membar://report` open the panel, scan again or copy a Markdown report. No URL stops a process.
 
 ## Privacy and data
 
 - MemBar does not connect to the network. It reads process data with system calls and a few local tools (`top`, `launchctl`, `xcrun simctl`, `docker stats`).
-- The 24-hour history is in `~/Library/Application Support/AppMem/history.json`. It grows by about 100 KB each day and keeps only 24 hours.
+- The 24-hour history is in `~/Library/Application Support/MemBar/history.json`. It grows by about 100 KB each day and keeps only 24 hours.
 - Settings, rules and the mark are in the app's user defaults (`com.huetic.membar`).
 - Inspect > Environment hides values whose names look secret until you click Show Values.
 - MemBar is not sandboxed, because the App Sandbox blocks process inspection and signals. For this reason, it cannot be in the Mac App Store.
@@ -125,7 +125,7 @@ swift build
 
 `./dmg.sh` makes the release DMG. Debug builds can draw the panel to a PNG with `--snapshot`. Add `CROWD=1` for made-up groups with each label, or `DARK=1` for dark mode. `build.sh` lists all the snapshot options.
 
-Open an [issue](https://github.com/Aaditya2605/appmem/issues) for bugs and ideas.
+Open an [issue](https://github.com/Aaditya2605/MemBar/issues) for bugs and ideas.
 
 ## License
 

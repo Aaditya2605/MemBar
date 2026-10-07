@@ -4,7 +4,7 @@ import SwiftUI
 // The RAM history over 24 hours: on disk, so the Details chart, the sparklines and the growth
 // check have data at once after a restart; Settings > Peaks Today. History keeps the last hour at one
 // sample each 15 s; older samples fold into one point each 5 min (fold). The file is
-// ~/Library/Application Support/AppMem/history.json, written at most every 5 min and at quit.
+// ~/Library/Application Support/MemBar/history.json, written at most every 5 min and at quit.
 // UserDefaults key: "chartDay" (Bool: the Details chart shows 24 h).
 
 // MARK: - Pure rules
@@ -95,12 +95,12 @@ extension History {
 
 // MARK: - The file
 
-/// ~/Library/Application Support/AppMem/history.json. Main thread only, except the writes.
+/// ~/Library/Application Support/MemBar/history.json. Main thread only, except the writes.
 /// ponytail: the last hour's groups of 50 to 100 MB are not saved, so after a restart their
 /// sparkline and growth check start again.
 enum HistoryFile {
     static let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("AppMem/history.json")  // the old name: the history carries over
+        .appendingPathComponent("MemBar/history.json")
     private static let queue = DispatchQueue(label: "membar.history", qos: .background)
     private static var latest: History?  // the last scan's: what the save at quit writes
     private static var savedAt = Date()  // set at the first scan: the first write comes 5 min after it

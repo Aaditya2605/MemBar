@@ -3,7 +3,7 @@ import SwiftUI
 
 // The menu bar item beyond the panel: the text next to the icon (Settings > Menu Bar
 // Shows, UserDefaults "menuBarShows"), the right-click menu, Copy Report, and the
-// appmem:// URLs. No URL stops anything: any web page can open one.
+// membar:// URLs. No URL stops anything: any web page can open one.
 
 enum MenuBarShows: String, CaseIterable {
     case icon, leftovers, ram, pressure
@@ -63,12 +63,13 @@ func report(groups: [Group], sys: SysMem, date: Date, physical: Int64 = Int64(Pr
     return lines.joined(separator: "\n")
 }
 
-/// What an appmem:// URL asks for.
+/// What an membar:// URL asks for.
 enum URLCommand: String { case open, refresh, report }
 
-/// appmem://open, appmem://open/, appmem:open → .open. Anything else, appmem://open/x too → nil.
+/// membar://open, membar://open/, membar:open → .open. Anything else, membar://open/x too → nil.
 func urlCommand(_ s: String) -> URLCommand? {
-    guard let u = URL(string: s), u.scheme?.lowercased() == "appmem" else { return nil }
+    // URLComponents, not URL: on macOS 15 URL gives no path for membar:open.
+    guard let u = URLComponents(string: s), u.scheme?.lowercased() == "membar" else { return nil }
     return URLCommand(rawValue: ((u.host ?? "") + u.path).trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased())
 }
 
@@ -90,7 +91,7 @@ struct MenuBarShowsPicker: View {
 }
 
 extension Model {
-    /// The gear menu's, the right-click menu's and appmem://report's Copy Report.
+    /// The gear menu's, the right-click menu's and membar://report's Copy Report.
     func copyReport() { Actions.copy(report(groups: groups, sys: sys, date: Date(), flags: reportFlags)) }
 
     /// The flags the group alone does not tell (growing, idle): Copy Report's and Save Report's.
@@ -164,7 +165,7 @@ extension Delegate {
     @objc func copyReport() { model.copyReport() }
     @objc func refreshNow() { model.refresh(force: true) }
 
-    /// ponytail: appmem://report that launches MemBar copies before the first scan, so with no
+    /// ponytail: membar://report that launches MemBar copies before the first scan, so with no
     /// groups; open the URL again. A completion on Model.refresh would fix it.
     @objc func handleURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue, let cmd = urlCommand(s) else { return }

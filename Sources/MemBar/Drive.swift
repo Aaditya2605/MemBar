@@ -5,7 +5,7 @@ import UserNotifications
 // `MemBar --drive OUTDIR` (debug builds): the real app (status item, Delegate, popover, Model)
 // with a scripted scenario on the main run loop, for what --snapshot cannot reach: the status
 // item's click, keys in the popover window, Esc, the Details window, the quick menu, the
-// appmem:// handler and the notifications. A PNG of the window after each step, and one line
+// membar:// handler and the notifications. A PNG of the window after each step, and one line
 // per check in OUTDIR/drive.log. It only looks: no Stop, Stop All, Quit or Pause, no menu
 // tracked, nothing posted, and it does not run while a rule that acts by itself is on.
 
@@ -45,7 +45,7 @@ enum Drive {
         guard let d = NSApp.delegate as? Delegate else { check(false, "the app delegate is Delegate"); return NSApp.terminate(nil) }
         let update = d.model.onUpdate
         d.model.onUpdate = { scans += 1; update() }
-        let pb = NSPasteboard.general  // ⌘C and appmem://report write it: the user's clipboard back at the end
+        let pb = NSPasteboard.general  // ⌘C and membar://report write it: the user's clipboard back at the end
         let clip: [NSPasteboardItem] = pb.pasteboardItems?.map { i in
             let c = NSPasteboardItem()
             for t in i.types { if let data = i.data(forType: t) { c.setData(data, forType: t) } }
@@ -170,17 +170,17 @@ enum Drive {
         check(m.items.filter { ["Copy Report", "Refresh", "Quit MemBar"].contains($0.title) && $0.isEnabled }.count == 3, "Copy Report, Refresh and Quit are on")
     }
 
-    /// 5. appmem:// as an Apple event to this process, so the handler that the app registered answers.
+    /// 5. membar:// as an Apple event to this process, so the handler that the app registered answers.
     /// Not NSWorkspace.open: Launch Services would send it to the installed MemBar.
     @MainActor static func urls(_ d: Delegate) async {
         let n = scans, pb = NSPasteboard.general
-        url("appmem://refresh")
-        check(await until(5) { scans > n }, "appmem://refresh scans")  // a scan can take seconds on a busy Mac
-        url("appmem://report")
+        url("membar://refresh")
+        check(await until(5) { scans > n }, "membar://refresh scans")  // a scan can take seconds on a busy Mac
+        url("membar://report")
         let ok = await until(3) { pb.string(forType: .string)?.hasPrefix("## MemBar report") == true }
-        check(ok, "appmem://report copies a report: \(pb.string(forType: .string)?.split(separator: "\n").count ?? 0) lines")
-        url("appmem://open")
-        check(await until(3) { d.popover.isShown }, "appmem://open shows the popover")
+        check(ok, "membar://report copies a report: \(pb.string(forType: .string)?.split(separator: "\n").count ?? 0) lines")
+        url("membar://open")
+        check(await until(3) { d.popover.isShown }, "membar://open shows the popover")
         d.popover.performClose(nil)
         check(await until(3) { !d.popover.isShown && !d.model.panelOpen }, "and it closes")
     }

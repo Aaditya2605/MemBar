@@ -24,9 +24,9 @@
 #                                           only: an .app has the installed app's settings
 #   $MemBar --help, -h                      every flag
 #   .build/debug/MemBar --agent-test HOME LABEL   debug test hook, not in --help: Disable and enable
-#                                           again a loaded com.appmem.test.* agent in HOME
+#                                           again a loaded com.membar.test.* agent in HOME
 #
-#   open appmem://report       copy a Markdown report (also appmem://open, appmem://refresh)
+#   open membar://report       copy a Markdown report (also membar://open, membar://refresh)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -66,7 +66,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleURLTypes</key>
   <array><dict>
     <key>CFBundleURLName</key><string>com.huetic.membar</string>
-    <key>CFBundleURLSchemes</key><array><string>appmem</string></array>
+    <key>CFBundleURLSchemes</key><array><string>membar</string></array>
   </dict></array>
 </dict>
 </plist>

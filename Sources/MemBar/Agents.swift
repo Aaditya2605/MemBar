@@ -209,9 +209,9 @@ func agentsTest() {
 #if DEBUG
 /// `MemBar --agent-test HOME LABEL` (debug builds): the real lookup, rule, Disable and enable again,
 /// for a test agent at HOME/Library/LaunchAgents that is loaded already, and the plist not changed.
-/// Only com.appmem.test.* labels: it must never act on a real agent.
+/// Only com.membar.test.* labels: it must never act on a real agent.
 func agentTest(home: String, label: String) -> Int32 {
-    guard label.hasPrefix("com.appmem.test.") else { fputs("MemBar: --agent-test acts only on com.appmem.test.* labels\n", stderr); return 2 }
+    guard label.hasPrefix("com.membar.test.") else { fputs("MemBar: --agent-test acts only on com.membar.test.* labels\n", stderr); return 2 }
     var failed = 0
     func check(_ ok: Bool, _ what: String) { if !ok { failed += 1 }; print((ok ? "ok    " : "FAIL  ") + what) }
     func loaded() -> Bool { !output("/bin/launchctl", ["print", "gui/\(getuid())/\(label)"]).isEmpty }  // stdout only when found
