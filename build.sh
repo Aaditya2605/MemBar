@@ -33,11 +33,15 @@ APP="build/MemBar.app"
 
 swift build -c "$CONFIG"
 
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Copy, then rename over the old binary: a new file, so a copy that runs is not
 # changed under it, and macOS does not keep the old code signature.
 cp ".build/$CONFIG/MemBar" "$APP/Contents/MacOS/MemBar.new"
 mv -f "$APP/Contents/MacOS/MemBar.new" "$APP/Contents/MacOS/MemBar"
+# The app icon: Claude Design option 5b, Resources/AppIcon.svg. After a change to the SVG, make the .icns again:
+#   mkdir -p /tmp/AppIcon.iconset && for s in 16 32 128 256 512; do rsvg-convert -w $s -h $s Resources/AppIcon.svg -o /tmp/AppIcon.iconset/icon_${s}x${s}.png;
+#   rsvg-convert -w $((s*2)) -h $((s*2)) Resources/AppIcon.svg -o /tmp/AppIcon.iconset/icon_${s}x${s}@2x.png; done && iconutil -c icns /tmp/AppIcon.iconset -o Resources/AppIcon.icns
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # LSUIElement: menu bar only, no Dock icon. No sandbox: it blocks process
 # inspection and signals.
@@ -50,6 +54,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>MemBar</string>
   <key>CFBundleIdentifier</key><string>com.huetic.membar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>$(date +%Y%m%d%H%M)</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
