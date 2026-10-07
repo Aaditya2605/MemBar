@@ -121,7 +121,7 @@ func orphanTest() {
         p(10, 1, node), p(11, 10, "/opt/homebrew/bin/esbuild"), p(12, 11, "/bin/sh"),  // orphan, its child and grandchild
         p(20, 1, node),                                                // a launchd job
         p(30, 1, "/Applications/Foo.app/Contents/MacOS/Foo"),          // an app
-        p(31, 1, "/usr/local/bin/x"),                                  // system path
+        p(31, 1, "/usr/bin/x"),                                        // system path
         p(32, 1, "/Users/a/Library/Application Support/Foo/agent"),    // an app's (Recall, leftovers)
         p(33, 1, "/opt/homebrew/bin/tmux"), p(34, 33, "/bin/zsh"),     // a session kept on purpose
         p(35, 1, "/opt/homebrew/bin/mosh-server"), p(36, 35, "/bin/zsh"), p(37, 36, "/opt/homebrew/bin/nvim"),  // too: its pty is live

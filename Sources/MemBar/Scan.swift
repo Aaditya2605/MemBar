@@ -38,7 +38,9 @@ struct Group: Identifiable {
 
 // MARK: - Pure rules
 
-let systemPrefixes = ["/System/", "/usr/", "/sbin/", "/bin/", "/Library/Apple/"]
+/// Apple's folders. Not all of /usr: /usr/local is for other installers (Homebrew on Intel,
+/// .pkg tools), and /usr/X11 links to XQuartz.
+let systemPrefixes = ["/System/", "/usr/bin/", "/usr/sbin/", "/usr/libexec/", "/usr/lib/", "/usr/share/", "/sbin/", "/bin/", "/Library/Apple/"]
 
 /// Group name for the executable path of a group's top process.
 func appOf(_ path: String) -> (name: String, isApp: Bool) {
@@ -365,6 +367,7 @@ func selfTest() {
     precondition(appOf("/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer") == ("macOS", false))
     precondition(appOf("/System/Applications/Weather.app/Contents/PlugIns/W.appex/Contents/MacOS/W") == ("Weather", false))
     precondition(appOf("-/opt/homebrew/bin/bash") == ("bash", false))
+    precondition(appOf("/usr/local/bin/node") == ("node", false) && appOf("/usr/libexec/x") == ("macOS", false))  // not Apple's; Apple's
     precondition(appOf("launchd_sim") == ("iOS Simulator", false))
     precondition(appOf("kernel_task") == ("kernel_task", false))
     precondition(appOf("/Library/Application Support/X") == ("X", false))  // X must be a folder
@@ -415,7 +418,7 @@ func selfTest() {
     do {  // a deleted program file: a leftover when each owner of this user runs one; Stop by hand, no auto-stop
         let exe = Bundle.main.executablePath!  // there; under it, ENOTDIR: only ENOENT is deleted
         precondition(isDeleted("/nonexistent/x") && !isDeleted("/bin/sh") && !isDeleted("kernel_task") && !isDeleted(exe) && !isDeleted(exe + "/x"))
-        precondition(!isDeleted("/usr/nonexistent/x") && !isDeleted("nonexistent/x"))  // Apple's folders; a relative path
+        precondition(!isDeleted("/usr/bin/nonexistent/x") && !isDeleted("nonexistent/x") && isDeleted("/usr/local/nonexistent/x"))  // Apple's folders; a relative path; not Apple's
         func gone(_ pid: pid_t, _ ppid: pid_t, _ path: String, _ mb: Int64, uid: uid_t = 501) -> (pid_t, Proc) {
             var q = Proc(pid: pid, ppid: ppid, uid: uid, path: path, mem: mb << 20)
             q.deleted = true
