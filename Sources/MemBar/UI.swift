@@ -448,7 +448,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         pressureEvents.resume()
     }
 
-    // The menu bar glyph (Claude Design "membar, 6 segments"): 6 blocks of 4 x 8 pt, 1 pt apart,
+    // The menu bar glyph: 6 blocks of 4 x 8 pt, 1 pt apart,
     // in 29 x 16 pt; the lit ones (litBlocks) at full ink, the rest at 25%. Templates: macOS
     // tints them for a light or dark menu bar. No size text by default (Settings > Menu Bar
     // Shows): it read as the total RAM use. The tooltip (menuState) and the panel tell leftovers

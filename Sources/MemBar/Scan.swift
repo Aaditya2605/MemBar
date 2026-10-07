@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-// The core, ported from ~/projects/scripts/appmem.py. Pure rules first (testable
+// The core, ported from a Python prototype. Pure rules first (testable
 // without the UI, see selfTest), then the system reads, then Stop.
 
 struct Proc {

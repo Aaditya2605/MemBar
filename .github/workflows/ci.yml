@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # macos-15 has Xcode 16, the oldest Xcode that the README supports.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift build
+      - run: .build/debug/MemBar --test
