@@ -22,8 +22,8 @@ func idleRule(_ name: String, _ rules: [String: Int] = UserDefaults.standard.qui
 /// "1 hour", "4 hours".
 func hours(_ minutes: Int) -> String { "\(minutes / 60) hour\(minutes == 60 ? "" : "s")" }
 
-/// What Stop acts on: the simulator (simctl), or a group with a process of this user.
-func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.isSimulator || g.procs.contains { $0.uid == uid } }
+/// What Stop acts on, as stop() does: a booted simulator device of this user (simctl), or a process of this user.
+func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.procs.contains { $0.uid == uid && (!g.isSimulator || $0.name == "launchd_sim") } }
 
 /// The groups a Stop still acts on: not one whose processes all were in its last Stop (a
 /// double-click or Stop All before the rescan, Alerts and auto-stop in one scan, a slow
