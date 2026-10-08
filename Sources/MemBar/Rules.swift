@@ -297,7 +297,7 @@ func rulesTest() {
     jobs.procs.append(proc(12, web, 1500))  // its web page is its own: 4.5 GB
     let own = restarts([jobs], rules: rules, ruled: ["Slack": t0 - 9 * h], lastFront: { _ in t0 - 2 * h }, frontmost: nil, restarted: [:],
                        paused: [:], bundleID: { _ in "com.tinyspeck.slackmacgap" }, now: t0, responsible: resp)
-    precondition(own.map { $0.procs.map(\.pid) } == [[10, 12]])  // what it quits and counts as freed
+    precondition(own.map { $0.procs.map(\.pid) } == [[10, 12]])  // what it quits
     precondition(restart([slack], id: "com.apple.Safari").isEmpty && restart([slack], id: nil).isEmpty && restart([app("Slack", 5000, isApp: false)]).isEmpty)
     var left = slack
     left.leftover = true

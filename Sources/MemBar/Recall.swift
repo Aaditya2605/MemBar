@@ -87,11 +87,11 @@ struct Recall {
     /// group() with what earlier scans saw. `jobs` runs only to name the job of a new
     /// respawn, never each scan.
     mutating func groups(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, now: Date = Date(),
-                         jobs: () -> String = launchctlList) -> [Group] {
+                         jobs: () -> String = launchctlList, uid: uid_t = getuid()) -> [Group] {
         let resp = Dictionary(uniqueKeysWithValues: procs.keys.map { ($0, responsible($0)) })
         let r: (pid_t) -> pid_t = { resp[$0] ?? -1 }
-        owners = remember(procs, responsible: r, owners: owners)
-        var gs = group(procs, responsible: r, owners: owners)
+        owners = remember(procs, responsible: r, owners: owners, uid: uid)
+        var gs = group(procs, responsible: r, owners: owners, uid: uid)
         stopped = stopped.filter { now.timeIntervalSince($0.value.at) <= 60 }
         for i in gs.indices {
             let name = gs[i].name
@@ -100,7 +100,7 @@ struct Recall {
                 if !new.isEmpty {
                     stopped[name] = nil
                     // A job of ours is a child of launchd that this user runs.
-                    let j = new.contains { $0.ppid == 1 && $0.uid == getuid() } ? launchdJobs(jobs()) : [:]
+                    let j = new.contains { $0.ppid == 1 && $0.uid == uid } ? launchdJobs(jobs()) : [:]
                     let label = new.lazy.compactMap { j[$0.pid] }.first
                     respawns[name] = "It starts again after Stop: macOS or a launch agent restarts it"
                         + (label.map { ". launchd job: \($0)" } ?? "")
@@ -152,7 +152,7 @@ func recallTest() {
     let r1: (pid_t) -> pid_t = { [61: 60, 62: 60, 63: 60, 64: 60, 65: 60, 66: 60, 67: 60][$0] ?? $0 }
     let owners1 = remember(open, responsible: r1, owners: [:], uid: 501)
     precondition(Set(owners1.keys) == [61, 62, 67] && owners1[61] == AppOwner(app: code, exe: node, uid: 501))
-    let g1 = byName(group(open, responsible: r1, owners: owners1))
+    let g1 = byName(group(open, responsible: r1, owners: owners1, uid: 501))
     precondition(!g1["Visual Studio Code"]!.leftover && pids(g1["Visual Studio Code"]).isSuperset(of: [60, 61, 62]))
 
     // VS Code quit: the responsibility call now returns each process itself, or a dead PID.
@@ -160,10 +160,10 @@ func recallTest() {
     quit[60] = nil
     quit[64] = Proc(pid: 64, ppid: 1, uid: 501, path: "/usr/bin/python3", mem: 1 << 20)
     let r2: (pid_t) -> pid_t = { [62: 60, 70: 999][$0] ?? $0 }  // 999, 60: dead
-    precondition(pids(byName(group(quit, responsible: r2))["node"]) == [61, 62, 63])  // no memory: today's rule
+    precondition(pids(byName(group(quit, responsible: r2, uid: 501))["node"]) == [61, 62, 63])  // no memory: today's rule
     let owners2 = remember(quit, responsible: r2, owners: owners1, uid: 501)
     precondition(Set(owners2.keys) == [61, 62])
-    let g2 = byName(group(quit, responsible: r2, owners: owners2))
+    let g2 = byName(group(quit, responsible: r2, owners: owners2, uid: 501))
     let vs = g2["Visual Studio Code"]!
     precondition(vs.leftover && pids(vs) == [61, 62] && vs.bundle == "/Applications/Visual Studio Code.app")
     precondition(pids(g2["node"]) == [63] && !g2["node"]!.leftover)  // never another user's
@@ -174,13 +174,13 @@ func recallTest() {
     // VS Code open again (a new PID): its old dev server is no leftover.
     var again = quit
     again[80] = Proc(pid: 80, ppid: 1, uid: 501, path: code, mem: 1 << 20)
-    precondition(!byName(group(again, responsible: r2, owners: owners2))["Visual Studio Code"]!.leftover)
+    precondition(!byName(group(again, responsible: r2, owners: owners2, uid: 501))["Visual Studio Code"]!.leftover)
 
     // PID 61 reused by another executable: not remapped, and forgotten.
     var reused = quit
     reused[61] = Proc(pid: 61, ppid: 1, uid: 501, path: "/opt/homebrew/bin/python3", mem: 1 << 20)
     reused[62] = nil
-    let g3 = byName(group(reused, responsible: r2, owners: owners2))
+    let g3 = byName(group(reused, responsible: r2, owners: owners2, uid: 501))
     precondition(g3["Visual Studio Code"] == nil && pids(g3["python3"]) == [61] && !g3["python3"]!.leftover)
     precondition(remember(reused, responsible: r2, owners: owners2, uid: 501).isEmpty)
 

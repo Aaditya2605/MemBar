@@ -63,7 +63,7 @@ To learn each label in the list, open the gear menu, then choose **What the Badg
 | --- | --- |
 | Group | All the processes that work for one app. |
 | Owner | The app that a process works for. MemBar uses the macOS "responsible" process (as Activity Monitor does), then the parent chain, then the program path. |
-| Leftover | A group that belongs to an app, while that app is not open. Also a booted simulator while Simulator.app is not open, and a group whose processes all run a deleted program file (for example, an uninstalled brew service). |
+| Leftover | A group that belongs to an app, while that app is not open, with at least one process of yours. Also a booted simulator while Simulator.app is not open, and a group whose processes all run a deleted program file (for example, an uninstalled brew service). |
 | Orphan | A command-line process of yours (dev server, watcher, MCP server) that lost its terminal or agent. It is not a leftover unless you set it in Settings. |
 | Memory | The physical footprint, as the "Memory" column in Activity Monitor. It includes compressed memory. |
 
