@@ -196,7 +196,7 @@ func containersTest() {
         p(60, 1, android, 3000),
     ])
     let resp: [pid_t: pid_t] = [23: 21, 32: 30, 52: 51]
-    let gs = byName(group(procs, responsible: { resp[$0] ?? $0 }))
+    let gs = byName(group(procs, responsible: { resp[$0] ?? $0 }, uid: 501))
     precondition(pids(gs["Linux VM"]) == [20, 21, 22, 23, 40, 41] && gs["Linux VM"]!.isVM && !gs["Linux VM"]!.leftover)
     precondition(pids(gs["Podman Desktop"]) == [30, 31, 32] && gs["Podman Desktop"]!.bundle == "/Applications/Podman Desktop.app" && !gs["Podman Desktop"]!.leftover)
     precondition(pids(gs["Docker"]) == [50, 51, 52] && pids(gs["macOS"]) == [1] && gs["Android Emulator"]!.leftover && !gs["Android Emulator"]!.isVM)
@@ -209,7 +209,7 @@ func containersTest() {
         let tab = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd"), p(10, 1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"), p(11, 10, "/bin/zsh"),
                                                     p(12, 1, lima), p(13, 12, "/usr/bin/ssh"), p(14, 1, xpc, 2000),
                                                     p(15, 1, "/opt/homebrew/bin/node"), p(16, 15, "/opt/homebrew/bin/esbuild")])
-        let t = byName(orphaning(group(tab, responsible: { $0 == 1 ? 1 : 10 }), [12, 13, 15, 16], procs: tab, ignored: [], asLeftover: false, uid: 501))
+        let t = byName(orphaning(group(tab, responsible: { $0 == 1 ? 1 : 10 }, uid: 501), [12, 13, 15, 16], procs: tab, ignored: [], asLeftover: false, uid: 501))
         precondition(pids(t["Ghostty"]) == [10, 11, 12, 13, 14] && t["Ghostty"]!.isVM && pids(t["node"]) == [15, 16] && t["node"]!.orphan)
         // The group's Quit with no app to ask: the tools, not Apple's VM process; its own line still can.
         let vm = gs["Linux VM"]!, alone = Group(name: "Linux VM", isApp: true, procs: [procs[41]!])
@@ -222,12 +222,12 @@ func containersTest() {
                                                  p(64, 61, "/opt/homebrew/bin/node")])
     let r1: (pid_t) -> pid_t = { [61: 60, 62: 60, 63: 62, 64: 60][$0] ?? $0 }
     let owners = remember(open, responsible: r1, owners: [:], uid: 501)
-    let vs = byName(group(open, responsible: r1, owners: owners))["Visual Studio Code"]!
+    let vs = byName(group(open, responsible: r1, owners: owners, uid: 501))["Visual Studio Code"]!
     precondition(pids(vs) == [60, 61, 62, 63, 64] && !vs.leftover && vs.isVM)
     var quit = open
     quit[60] = nil; quit[61] = nil
     quit[62] = p(62, 1, lima).1; quit[64] = p(64, 1, "/opt/homebrew/bin/node").1
-    let after = byName(group(quit, responsible: { $0 == 63 ? 62 : $0 }, owners: remember(quit, responsible: { $0 == 63 ? 62 : $0 }, owners: owners, uid: 501)))
+    let after = byName(group(quit, responsible: { $0 == 63 ? 62 : $0 }, owners: remember(quit, responsible: { $0 == 63 ? 62 : $0 }, owners: owners, uid: 501), uid: 501))
     precondition(pids(after["Linux VM"]) == [62, 63] && !after["Linux VM"]!.leftover && pids(after["Visual Studio Code"]) == [64] && after["Visual Studio Code"]!.leftover)
 
     // docker stats lines: binary and decimal units, "--", lines that do not decode.
