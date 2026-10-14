@@ -122,7 +122,7 @@ extension UserDefaults {
 /// The rules' memory and their actions. Main thread only, like Usage.
 enum Rules {
     private static var pauses = PauseState()
-    private static var ruled: [String: Date] = [:]  // app name → the first scan that saw its Restart When Above rule
+    private static var ruled: [String: Date] = [:], ruledRules: [String: Int] = [:]  // app name → when its Restart When Above rule was set; the rules then
     // ponytail: in RAM only, so an MemBar restart forgets the 6 h; the 30 min wait from launch still holds.
     private static var restarted: [String: Date] = [:]  // app name → the last restart that the rule tried
     private static var term: DispatchSourceSignal?
@@ -147,7 +147,7 @@ enum Rules {
     static func check(_ groups: [Group]) {
         let d = UserDefaults.standard, now = Date(), restart = d.restartAbove
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
-        ruled = Dictionary(uniqueKeysWithValues: restart.keys.map { ($0, ruled[$0] ?? now) })
+        (ruled, ruledRules) = (ruleClock(restart, was: ruledRules, ruled: ruled, now: now), restart)
         for g in restarts(groups.filter { !Auto.quitAsked($0.name) }, rules: restart, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, restarted: restarted,
                           paused: pausedPIDs, bundleID: { Actions.runningApp($0)?.bundleIdentifier }, now: now) {
             guard let app = Actions.runningApp(g), let url = app.bundleURL, let mb = restartRule(g.name, restart) else { continue }

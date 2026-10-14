@@ -883,6 +883,10 @@ func selfTest() {
         // A rule set on an app idle for 2 h counts from when it was set: never a quit at once.
         precondition(quits(groups, ruled: ["Claude": t0 - h + 1]).isEmpty && quits(groups, ruled: ["Claude": t0 - h]) == ["Claude"])
         precondition(quits(groups, tried: ["Claude": t0 - 2 * h], ruled: ["Claude": t0 - h]).isEmpty)  // still one ask per stretch
+        // A changed value is a rule set now: "4 Hours" → "1 Hour" starts the clock again, the same value keeps it.
+        let clock = ruleClock(["Claude": 60, "Slack": 240], was: ["Claude": 240, "Slack": 240], ruled: ["Claude": t0 - 9 * h, "Slack": t0 - 9 * h], now: t0)
+        precondition(clock == ["Claude": t0, "Slack": t0 - 9 * h] && ruleClock(["Zed": 60], was: [:], ruled: [:], now: t0) == ["Zed": t0])
+        precondition(quits(groups, ruled: clock).isEmpty)  // Claude idle for 2 h, rule changed just now
         var vm = claude
         vm.procs.append(Proc(pid: 99, ppid: 1, uid: 501, path: "/opt/homebrew/bin/limactl", mem: 0))
         precondition(quits([vm]).isEmpty)  // runs a VM: in use with no window

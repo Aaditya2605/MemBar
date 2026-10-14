@@ -113,9 +113,16 @@ enum Freed {
 }
 
 /// The rules' memory between scans. Main thread only, like Usage.
+/// When each per-app rule was set: kept while its value stays, now when it is new or changed, so
+/// "4 Hours" changed to "1 Hour" on an app idle for 2 h does not quit it at once. `was`: the rules
+/// of the previous scan. Quit When Idle and Restart When Above both keep one.
+func ruleClock(_ rules: [String: Int], was: [String: Int], ruled: [String: Date], now: Date) -> [String: Date] {
+    Dictionary(uniqueKeysWithValues: rules.map { ($0.key, was[$0.key] == $0.value ? ruled[$0.key] ?? now : now) })
+}
+
 enum Auto {
     private static var since: [String: Date] = [:]  // leftover id → the first scan that saw it as one
-    private static var ruled: [String: Date] = [:]  // app name → the first scan that saw its rule
+    private static var ruled: [String: Date] = [:], ruledRules: [String: Int] = [:]  // app name → when its rule was set; the rules then
     private static var tried: [String: Date] = [:]  // app name → its last-front time when asked to quit
 
     /// Quit When Idle asked `name` to quit in this idle period (not frontmost since): Restart When Above
@@ -135,7 +142,7 @@ enum Auto {
             model.stopGroups(stops, how: "Auto-stop")
         }
         let rules = d.quitIdle
-        ruled = Dictionary(uniqueKeysWithValues: rules.keys.map { ($0, ruled[$0] ?? now) })
+        (ruled, ruledRules) = (ruleClock(rules, was: ruledRules, ruled: ruled, now: now), rules)
         guard !rules.isEmpty else { return }
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried,
