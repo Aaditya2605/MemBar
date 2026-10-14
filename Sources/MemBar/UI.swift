@@ -57,7 +57,7 @@ final class Model: ObservableObject {
             // ponytail: root-process memory from top at most every 30 s, and only
             // with the panel open. The icon needs only this user's processes.
             if open, force || -topAt.timeIntervalSinceNow > 30 { top = topMem(); topAt = Date() }
-            var procs = scan(top: top)
+            var procs = scan(top: open ? top : [:])  // closed: only this user's memory, not top's last numbers
             // Listening ports only with the panel open, at most every 10 s or on Refresh: a
             // pass reads each fd of each of this user's processes (about 2 ms for 420 here).
             if open, force || -portsAt.timeIntervalSinceNow > 10 { ports = listenPorts(procs); portsAt = Date() }
