@@ -585,6 +585,8 @@ func selfTest() {
         precondition(allowed(byName["iOS Simulator"]!, app: false, uid: 501, me: 99) == Allowed())
         // Apple's own: no signals, but its app can be asked to quit; in a third-party app's group, signals
         precondition(allowed(weather, app: false, uid: 501, me: 99) == Allowed() && allowed(weather, app: true, uid: 501, me: 99) == Allowed(quit: true, restart: true))
+        precondition(!mayForceQuit(weather, app: true, allowed(weather, app: true, uid: 501, me: 99)))  // asked to quit, never killed
+        precondition(mayForceQuit(cursor, app: true, allowed(cursor, app: true, uid: 501, me: 99)) && mayForceQuit(cursor, app: false, allowed(cursor, app: false, uid: 501, me: 99)))
         precondition(maySignal(procs[51]!, in: byName["WhatsApp"]!, uid: 501, me: 99))
         var paused = cursor
         paused.procs[0].stopped = true

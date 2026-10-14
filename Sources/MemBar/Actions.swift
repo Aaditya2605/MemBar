@@ -5,7 +5,7 @@ import SwiftUI
 // signal, which items apply) are pure, see selfTest. Each signal re-checks its process
 // right before it goes out, with Stop's `same`.
 
-/// Which menu items apply. Force Quit applies when Quit does.
+/// Which menu items apply. Force Quit applies when Quit does, but not to Apple's own apps (mayForceQuit).
 struct Allowed: Equatable { var quit = false, restart = false, pause = false, resume = false }
 
 /// May the menu signal `p`? Only this user's processes; never launchd, MemBar or its
@@ -30,6 +30,10 @@ func allowed(_ g: Group, app: Bool, uid: uid_t = getuid(), me: pid_t = getpid())
     a.restart = app && g.name != "macOS"; a.quit = a.restart || allowed(quitProcs(g), in: g, uid: uid, me: me).quit
     return a
 }
+
+/// Force Quit: with an app to ask, `forceTerminate`, a SIGKILL. Apple's own apps (Finder, Mail) get no
+/// signals, so for them only Quit, which asks.
+func mayForceQuit(_ g: Group, app: Bool, _ a: Allowed) -> Bool { a.quit && (g.isApp || !app) }
 
 /// What the group's Quit signals with no app to ask: not Apple's VM process (Containers.swift).
 /// Its tool (limactl, vfkit, Docker's) powers the guest off cleanly on SIGTERM, and the VM ends
@@ -134,7 +138,7 @@ struct GroupMenu: View {
         Divider()
         Button("Quit \(g.name)") { Actions.quit(g, app) }.disabled(!a.quit)
         Button("Force Quit \(g.name)…") { if Actions.confirmForceQuit(g.name) { Actions.quit(g, app, force: true) } }
-            .disabled(!a.quit)
+            .disabled(!mayForceQuit(g, app: app != nil, a))
         if let app, a.restart { Button("Restart \(g.name)") { Actions.restart(g, app) } }
         if a.restart && !g.leftover { Divider(); QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app; divider: rules apart from act-now items
         if let app, a.restart && !g.leftover { RuleMenus(g: g, app: app, signals: a.pause || a.resume) }  // Rules.swift
