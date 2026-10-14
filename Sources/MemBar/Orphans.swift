@@ -131,10 +131,11 @@ func orphanTest() {
         p(70, 1, "/opt/homebrew/bin/deno"), p(71, 70, node, uid: 502), // a child of another user is not ours
         p(80, 1, "/Users/a/dev/srv"), p(81, 80, node),                 // an agent's, in its open app's group
         p(90, 1, "/opt/homebrew/bin/vite"),                            // in a leftover's group: Recall knows its app
+        p(95, 1, "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"),  // brew's python3 -m http.server
     ])
     let tty: (pid_t) -> Bool = { [36, 37, 40].contains($0) }
     let o = orphans(procs, jobs: [20], detached: { $0 != 40 }, terminal: tty, uid: 501, me: 60)
-    precondition(o == [10, 11, 12, 70, 80, 81, 90])
+    precondition(o == [10, 11, 12, 70, 80, 81, 90, 95])
     precondition(orphans(procs, jobs: [20], detached: { $0 != 40 }, terminal: { _ in false }, uid: 501, me: 60).isSuperset(of: [35, 36, 37]))
     precondition(orphans(procs, jobs: [], detached: { _ in false }, terminal: tty, uid: 501, me: 60).isEmpty)  // before the first job list
     func g(_ name: String, _ isApp: Bool, _ pids: [pid_t], leftover: Bool = false) -> Group {
@@ -152,6 +153,7 @@ func orphanTest() {
     precondition(badges(m) == ["node", "deno", "srv"] && !m.values.contains { $0.orphan && $0.leftover })
     precondition(pids(m["srv"]) == [80, 81] && pids(m["Foo"]) == [30, 32] && pids(m["Bar"]) == [90])  // out of the open app only
     precondition(badges(run([gs[6]])).isEmpty)  // none of ours
+    precondition(badges(run([g("Python", true, [95])])) == ["Python"])  // its Python.app is no app of the user's
     let ig = run(Array(gs.prefix(6)), ignored: ["srv", "deno"])
     precondition(badges(ig) == ["node"] && pids(ig["Foo"]) == [30, 32, 80, 81])
     precondition(Set(run(Array(gs.prefix(6)), asLeftover: true).values.filter(\.leftover).map(\.name)) == ["Bar", "node", "deno", "srv"])

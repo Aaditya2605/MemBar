@@ -20,7 +20,8 @@ struct AppOwner: Equatable { let app: String, exe: String, uid: uid_t }
 /// ponytail: a `nohup` job kept on purpose looks like any other leftover.
 func isCLI(_ path: String) -> Bool {
     let a = appOf(path)
-    return !a.isApp && a.name != "iOS Simulator" && !systemPrefixes.contains(where: path.hasPrefix)
+    // Homebrew's and python.org's python3 run from a Python.app inside Python.framework: still the command.
+    return (!a.isApp || path.contains("/Python.framework/")) && a.name != "iOS Simulator" && !systemPrefixes.contains(where: path.hasPrefix)
         && !["tmux", "screen", "zellij", "dtach", "abduco"].contains(a.name)
 }
 
@@ -136,6 +137,8 @@ func recallTest() {
     let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", node = "/opt/homebrew/bin/node"
     precondition(isCLI(node) && isCLI("-/opt/homebrew/bin/bash") && !isCLI(code) && !isCLI("/usr/bin/python3"))
     precondition(!isCLI("/Users/a/Library/Application Support/Cursor/node") && !isCLI("launchd_sim"))
+    let brewPython = "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python"
+    precondition(isCLI(brewPython) && isCLI("/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python"))
     precondition(!isCLI("/opt/homebrew/bin/tmux") && !isCLI("/opt/homebrew/Cellar/dtach/0.9/bin/dtach") && !isCLI("/opt/homebrew/bin/abduco"))
 
     // VS Code open: it started a dev server (61, detached: ppid 1) with a child (62).
