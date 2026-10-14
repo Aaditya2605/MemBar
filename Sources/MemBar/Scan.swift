@@ -15,7 +15,15 @@ struct Proc {
     var peak: Int64 = 0  // the most memory since it started; 0 when not readable (other users)
     var io = IO()  // energy and disk counters, and their rates since the previous scan (Energy.swift)
     var deleted = false  // its executable file is deleted (isDeleted): nothing can start it again
-    var name: String { String((path.split(separator: "/").last ?? "?").drop { $0 == "-" }) }
+    var name: String { exeName(path) }
+}
+
+/// An executable's name: its file's, without a login shell's leading "-". A file named by its version
+/// takes its tool's folder: `~/.local/share/claude/versions/2.1.299` → claude, not "2.1.299".
+func exeName(_ path: String) -> String {
+    var parts = path.split(separator: "/")
+    if parts.count > 2, parts[parts.count - 2] == "versions", parts.last!.first!.isNumber { parts.removeLast(2) }
+    return String((parts.last ?? "?").drop { $0 == "-" })
 }
 
 struct Group: Identifiable {
@@ -60,7 +68,7 @@ func appOf(_ path: String) -> (name: String, isApp: Bool) {
         return (String(p.dropLast(4)), isApp)
     }
     if !isApp { return ("macOS", false) }
-    return (String((parts.last ?? "?").drop { $0 == "-" }), false)
+    return (exeName(path), false)
 }
 
 /// The outermost `<X>.app` folder in `path`.
@@ -372,6 +380,7 @@ func selfTest() {
     precondition(appOf("-/opt/homebrew/bin/bash") == ("bash", false))
     precondition(appOf("/usr/local/bin/node") == ("node", false) && appOf("/usr/libexec/x") == ("macOS", false))  // not Apple's; Apple's
     precondition(appOf("launchd_sim") == ("iOS Simulator", false))
+    precondition(appOf("/Users/a/.local/share/claude/versions/2.1.299") == ("claude", false) && exeName("/x/versions/beta") == "beta")  // a version file: its tool
     precondition(appOf("kernel_task") == ("kernel_task", false))
     precondition(appOf("/Library/Application Support/X") == ("X", false))  // X must be a folder
     precondition(bundlePath("/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/C") == "/Applications/Claude.app")
