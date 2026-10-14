@@ -34,12 +34,16 @@ CONFIG="${1:-release}"
 VERSION=0.1.2
 APP="build/MemBar.app"
 
-swift build -c "$CONFIG"
+# Release: one binary for Apple silicon and Intel. Debug: this Mac's only, as it is faster.
+ARCHS=""
+if [ "$CONFIG" = release ]; then ARCHS="--arch arm64 --arch x86_64"; fi
+swift build -c "$CONFIG" $ARCHS  # unquoted on purpose: two flags or none
+BIN="$(swift build -c "$CONFIG" $ARCHS --show-bin-path)"
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Copy, then rename over the old binary: a new file, so a copy that runs is not
 # changed under it, and macOS does not keep the old code signature.
-cp ".build/$CONFIG/MemBar" "$APP/Contents/MacOS/MemBar.new"
+cp "$BIN/MemBar" "$APP/Contents/MacOS/MemBar.new"
 mv -f "$APP/Contents/MacOS/MemBar.new" "$APP/Contents/MacOS/MemBar"
 # The app icon: Resources/AppIcon.svg. After a change to the SVG, make the .icns again:
 #   mkdir -p /tmp/AppIcon.iconset && for s in 16 32 128 256 512; do rsvg-convert -w $s -h $s Resources/AppIcon.svg -o /tmp/AppIcon.iconset/icon_${s}x${s}.png;
