@@ -61,7 +61,7 @@ Disable Launch Agent… asks first, then runs `launchctl bootout` and `launchctl
 Stopped with SIGSTOP (right-click > Pause, Pause When in Background, a debugger, ctrl-Z). The badge shows when all of this user's processes in the group are paused.
 
 **Idle app**:
-An open app (not a leftover, not ignored, not "macOS") with 500 MB or more that was not frontmost for 2 h or more. Frontmost is the only sign of use; a Chromium PWA in front counts for its browser too. An app never seen frontmost is not idle. At launch, saved times count as now.
+An open app (not a leftover, not ignored, not "macOS", and its app runs: not only a root helper or an extension that stays after a quit) with 500 MB or more that was not frontmost for 2 h or more. Frontmost is the only sign of use; a Chromium PWA in front counts for its browser too. An app never seen frontmost is not idle. At launch, saved times count as now.
 
 **Leftover age**:
 "for 2 d" after a leftover or an orphan: how long its oldest process has run. For the simulator: its first booted device (`launchd_sim`), because CoreSimulator daemons run for weeks.

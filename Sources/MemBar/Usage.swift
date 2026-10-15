@@ -99,7 +99,11 @@ enum Usage {
     /// When app `name` was last frontmost: now while it is, nil when never seen.
     static func lastFront(_ name: String) -> Date? { front.contains(name) ? Date() : seen[name].map(Date.init(timeIntervalSince1970:)) }
 
-    static func idle(_ g: Group) -> TimeInterval? { idleTime(g, lastFront: lastFront(g.name), now: Date()) }
+    /// Only while an app runs: not a root helper or an extension that stays after its app quit (not leftovers either).
+    static func idle(_ g: Group) -> TimeInterval? {
+        guard let t = idleTime(g, lastFront: lastFront(g.name), now: Date()), Actions.runningApp(g) != nil else { return nil }
+        return t
+    }
 
     /// Only for leftovers and orphans: a sysctl each.
     static func age(_ g: Group) -> TimeInterval? { leftoverAge(g, started: started, now: Date()) }
