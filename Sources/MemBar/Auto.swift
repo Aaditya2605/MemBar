@@ -140,8 +140,9 @@ enum Auto {
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried,
                            paused: Rules.pausedPIDs, now: now) {
-            tried[g.name] = Usage.lastFront(g.name)
+            // No app runs (only a root helper or an extension is left): nothing is asked, so the stretch is not used up.
             guard let app = Actions.runningApp(g) else { continue }
+            tried[g.name] = Usage.lastFront(g.name)
             // What the pause rule stopped must answer the quit. Its clock starts again, so Rules.check
             // right after this does not pause it partway through the quit, or again if the user cancels.
             Rules.resume(g.name)
