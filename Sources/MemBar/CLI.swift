@@ -14,7 +14,9 @@ private let usage = """
       --stop [NAME ...] [--dry-run]
                                   stop all leftover groups, or only the named ones
                                   (any case), as the Stop button does; --dry-run:
-                                  print what it would stop, stop nothing; not as root
+                                  print what it would stop, stop nothing; not as root;
+                                  exit status 1 if a NAME is no leftover or a group
+                                  is skipped
       --test                      self-check of the pure rules
       --snapshot OUT.png [QUERY]  debug builds: the panel as a PNG
       --snapshot-details OUT.png GROUP [QUERY]
@@ -22,6 +24,9 @@ private let usage = """
       --drive OUTDIR              debug builds: run the real app through a scripted
                                   scenario; a PNG per step and drive.log in OUTDIR
       --help, -h                  this text
+
+    The flags do not use the panel's memory of which app started a process, nor
+    orphans: the panel can show more leftovers than --leftovers and --stop.
 
     """
 
@@ -60,16 +65,32 @@ func parseArgs(_ args: [String], uid: uid_t = getuid()) -> CLICommand? {
     }
     if has.contains("--cpu") { return .bad("--cpu works only with --json") }
     if has.contains("--dry-run") { return .bad("--dry-run works only with --stop") }
+    // A bare word (`stop Cursor`, or "—stop" with an em dash from pasted text) is no command either.
+    if let w = args.first, !w.hasPrefix("-") { return .bad("unknown argument: \(w)") }
     return nil
 }
 
 /// The leftover groups to stop: all, or the ones in `names` (any case). `missing`:
-/// names with no leftover group (a typo, or the app is open), to report them.
-func stopTargets(_ groups: [Group], _ names: [String]) -> (targets: [Group], missing: [String]) {
+/// names with no leftover group (a typo, or the app is open), to report them. `skipped`:
+/// a group that holds `me` (a hook in it would stop its own agent and shell), or with no
+/// process Stop can act on.
+func stopTargets(_ groups: [Group], _ names: [String], me: pid_t = getpid(), uid: uid_t = getuid())
+    -> (targets: [Group], missing: [String], skipped: [(name: String, why: String)]) {
     let left = groups.filter(\.leftover), want = Set(names.map { $0.lowercased() })
     let found = Set(left.map { $0.name.lowercased() })
-    return (names.isEmpty ? left : left.filter { want.contains($0.name.lowercased()) },
-            names.filter { !found.contains($0.lowercased()) })
+    var targets: [Group] = [], skipped: [(name: String, why: String)] = []
+    for g in names.isEmpty ? left : left.filter({ want.contains($0.name.lowercased()) }) {
+        if g.procs.contains(where: { $0.pid == me }) { skipped.append((g.name, "this command runs in it")) }
+        else if !stoppable(g, uid: uid) { skipped.append((g.name, "its processes belong to other users")) }
+        else { targets.append(g) }
+    }
+    return (targets, names.filter { !found.contains($0.lowercased()) }, skipped)
+}
+
+/// The Never Flagged list. The bare binary (.build/*/MemBar) has its own defaults domain: also the menu app's.
+func neverFlagged() -> [String] {
+    let d = UserDefaults.standard
+    return d.ignored + (d.persistentDomain(forName: "com.huetic.membar")?["ignored"] as? [String] ?? [])
 }
 
 private struct ProcJSON: Encodable { let pid: pid_t, name: String, path: String, memory: Int64, cpu: Double? }
@@ -96,7 +117,7 @@ func jsonReport(_ groups: [Group], sys: SysMem, cpu: Bool) -> Data {
 /// and without it only root processes in a leftover group show 0 memory.
 /// With `cpu`, two scans 1 s apart: CPU % needs two CPU times.
 /// Ignored apps (Settings) are not leftovers here either: --stop must not stop what
-/// the menu has no Stop for. Only --list keeps them, to compare with the prototype.
+/// the menu has no Stop for.
 private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group] {
     let start = Date()
     var procs = scan(top: top)
@@ -106,9 +127,7 @@ private func scanGroups(top: [pid_t: Int64] = [:], cpu: Bool = false) -> [Group]
         procs = scan(top: top)
         addCPU(&procs, prev: prev, seconds: seconds)
     }
-    // The bare binary (.build/*/MemBar) has its own defaults domain: also the menu app's Never Flagged list.
-    let d = UserDefaults.standard, app = d.persistentDomain(forName: "com.huetic.membar")?["ignored"] as? [String] ?? []
-    return ignoring(group(procs, responsible: responsible), d.ignored + app)
+    return ignoring(group(procs, responsible: responsible), neverFlagged())
 }
 
 /// Runs the command in `args` and returns the exit status; nil when `args` has
@@ -131,19 +150,13 @@ func runCLI(_ args: [String]) -> Int32? {
         if left.isEmpty { fputs("no leftovers\n", stderr) }
         return left.isEmpty ? 0 : 1
     case .stop(let names, let dryRun):
-        let (targets, missing) = stopTargets(scanGroups(), names)
+        let (targets, missing, skipped) = stopTargets(scanGroups(), names)
         for n in missing { fputs("no leftover named \"\(n)\"\n", stderr) }
-        if names.isEmpty && targets.isEmpty { fputs("no leftovers\n", stderr) }
+        for s in skipped { fputs("skip \(s.name): \(s.why)\n", stderr) }
+        if names.isEmpty && targets.isEmpty && skipped.isEmpty { fputs("no leftovers\n", stderr) }
         var stopped = false
         for g in targets {
-            // A hook that runs in a leftover group would stop its own agent and shell.
-            if g.procs.contains(where: { $0.pid == getpid() }) {
-                fputs("skip \(g.name): this command runs in it\n", stderr); continue
-            }
             let mine = g.procs.filter { $0.uid == getuid() }.map { String($0.pid) }  // stop() signals only these
-            if !stoppable(g) {
-                fputs("skip \(g.name): its processes belong to other users\n", stderr); continue
-            }
             print(dryRun ? "would stop" : "stop", g.name, fmt(g.mem),
                   g.isSimulator ? "xcrun simctl shutdown (each booted device)" : mine.joined(separator: " "), separator: "\t")
             if !dryRun { stop(g); stopped = true }
@@ -151,6 +164,6 @@ func runCLI(_ args: [String]) -> Int32? {
         // ponytail: a fixed wait, not a handle on the follow-up. stop() sends SIGKILL
         // from a global queue after 3 s (+ up to 10% timer leeway); exit would drop it.
         if stopped { fflush(stdout); Thread.sleep(forTimeInterval: 4) }
-        return missing.isEmpty ? 0 : 1
+        return missing.isEmpty && skipped.isEmpty ? 0 : 1  // a script must not take a skip for a stop
     }
 }

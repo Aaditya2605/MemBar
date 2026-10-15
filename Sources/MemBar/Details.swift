@@ -67,10 +67,10 @@ struct SelectionMenu: View {
     let ps: [Proc], g: Group
 
     var body: some View {
-        let a = allowed(ps, in: g), n = "\(ps.count) Processes"
-        Button("Quit \(n)") { Actions.send(SIGTERM, ps, in: g) }.disabled(!a.quit)
-        Button("Force Quit \(n)…") { if Actions.confirmForceQuit(n.lowercased()) { Actions.send(SIGKILL, ps, in: g) } }
-            .disabled(!a.quit)
+        let a = allowed(ps, in: g), q = quitProcs(ps), n = "\(ps.count) Processes"  // as the group's Quit: the VM's tool ends it
+        Button("Quit \(n)") { Actions.send(SIGTERM, q, in: g) }.disabled(!allowed(q, in: g).quit)
+        Button("Force Quit \(n)…") { if Actions.confirmForceQuit(n.lowercased()) { Actions.send(SIGKILL, q, in: g) } }
+            .disabled(!allowed(q, in: g).quit)
         Button("Pause") { Actions.send(SIGSTOP, ps.filter { !$0.stopped }, in: g) }.disabled(!a.pause)
         Button("Resume") { Actions.send(SIGCONT, ps.filter(\.stopped), in: g) }.disabled(!a.resume)
         Divider()

@@ -8,13 +8,14 @@ import SwiftUI
 /// Which menu items apply. Force Quit applies when Quit does.
 struct Allowed: Equatable { var quit = false, restart = false, pause = false, resume = false }
 
-/// May the menu signal `p`? Only this user's processes; never launchd, MemBar or its
+/// May the menu or Stop signal `p`? Only this user's processes; never launchd, MemBar or its
 /// children (a paused top would hang the scan); never the macOS group; Apple's own
-/// programs only in a third-party app's group (SIGTERM to loginwindow logs out); the iOS
-/// Simulator only by Stop, as simctl shuts devices down cleanly.
+/// programs only in a third-party app's, an orphan's or a deleted program's group, as part
+/// of its tree (SIGTERM to loginwindow logs out); the iOS Simulator only by Stop, as simctl
+/// shuts devices down cleanly.
 func maySignal(_ p: Proc, in g: Group, uid: uid_t = getuid(), me: pid_t = getpid()) -> Bool {
     p.uid == uid && p.pid > 1 && p.pid != me && p.ppid != me && g.name != "macOS" && !g.isSimulator
-        && (g.isApp || !systemPrefixes.contains { p.path.hasPrefix($0) })
+        && (g.isApp || g.orphan || g.deleted || !systemPrefixes.contains { p.path.hasPrefix($0) })
 }
 
 /// Which items apply to processes `ps` of `g`: an item applies when it applies to one of them.
@@ -27,15 +28,15 @@ func allowed(_ ps: [Proc], in g: Group, uid: uid_t = getuid(), me: pid_t = getpi
 /// signals quitProcs.
 func allowed(_ g: Group, app: Bool, uid: uid_t = getuid(), me: pid_t = getpid()) -> Allowed {
     var a = allowed(g.procs, in: g, uid: uid, me: me)
-    a.restart = app && g.name != "macOS"; a.quit = a.restart || allowed(quitProcs(g), in: g, uid: uid, me: me).quit
+    a.restart = app && g.name != "macOS"; a.quit = a.restart || allowed(quitProcs(g.procs), in: g, uid: uid, me: me).quit
     return a
 }
 
-/// What the group's Quit signals with no app to ask: not Apple's VM process (Containers.swift).
-/// Its tool (limactl, vfkit, Docker's) powers the guest off cleanly on SIGTERM, and the VM ends
-/// with it; a signal to the VM at the same moment cuts the guest off mid-write. Its own line still
-/// can, as for a VM whose tool is gone.
-func quitProcs(_ g: Group) -> [Proc] { g.procs.filter { !isVMPath($0.path) || !systemPrefixes.contains(where: $0.path.hasPrefix) } }
+/// What the group's Quit, and a multi-selection's, signals of `ps` with no app to ask: not Apple's
+/// VM process (Containers.swift). Its tool (limactl, vfkit, Docker's) powers the guest off cleanly
+/// on SIGTERM, and the VM ends with it; a signal to the VM at the same moment cuts the guest off
+/// mid-write. Its own line still can, as for a VM whose tool is gone.
+func quitProcs(_ ps: [Proc]) -> [Proc] { ps.filter { !isVMPath($0.path) || !systemPrefixes.contains(where: $0.path.hasPrefix) } }
 
 /// The "paused" badge: all of this user's processes in `g` are stopped.
 func isPaused(_ g: Group, uid: uid_t = getuid()) -> Bool {
@@ -77,7 +78,7 @@ enum Actions {
     /// With an app: ask it to quit (it can save first, or cancel), or force it. Without:
     /// SIGTERM or SIGKILL to the group's processes, but Apple's VM process (quitProcs).
     static func quit(_ g: Group, _ app: NSRunningApplication?, force: Bool = false) {
-        guard let app else { return send(force ? SIGKILL : SIGTERM, quitProcs(g), in: g) }
+        guard let app else { return send(force ? SIGKILL : SIGTERM, quitProcs(g.procs), in: g) }
         send(SIGCONT, g.procs, in: g)  // a paused app cannot answer; all, as stopped can be old
         _ = force ? app.forceTerminate() : app.terminate()
     }
@@ -136,8 +137,9 @@ struct GroupMenu: View {
         Button("Force Quit \(g.name)…") { if Actions.confirmForceQuit(g.name) { Actions.quit(g, app, force: true) } }
             .disabled(!a.quit)
         if let app, a.restart { Button("Restart \(g.name)") { Actions.restart(g, app) } }
-        if a.restart && !g.leftover { Divider(); QuitIdleMenu(g: g) }  // restart: an app runs at the group's .app; divider: rules apart from act-now items
-        if let app, a.restart && !g.leftover { RuleMenus(g: g, app: app, signals: a.pause || a.resume) }  // Rules.swift
+        // restart: an app runs at the group's .app; not a VM's (in use with no window): the rules skip it. Divider: rules apart from act-now items.
+        if a.restart && !g.leftover && !g.isVM { Divider(); QuitIdleMenu(g: g) }
+        if let app, a.restart && !g.leftover && !g.isVM { RuleMenus(g: g, app: app, signals: a.pause || a.resume) }  // Rules.swift
         Divider()
         if a.resume { Button("Resume") { Actions.send(SIGCONT, g.procs.filter(\.stopped), in: g) } }
         if a.pause || !a.resume {

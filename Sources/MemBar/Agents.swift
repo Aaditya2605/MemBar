@@ -22,11 +22,12 @@ func mayToggle(_ label: String, plist: String?, folder: String, uid: uid_t = get
     return url.pathExtension == "plist" && url.deletingLastPathComponent().path == URL(fileURLWithPath: folder).standardized.path
 }
 
-/// launchctl's arguments. Disable: stop the job now (bootout), then keep launchd from loading it
-/// again, also at the next login (disable). Enable: the other way round, from the plist.
+/// launchctl's arguments. Disable: keep launchd from loading the job again, also at the next login
+/// (disable), then stop it now (bootout). First: a bootout that fails (a job slow to exit) must not
+/// leave it on at login. Enable: the other way round, from the plist.
 func agentSteps(disable: Bool, label: String, plist: String, uid: uid_t = getuid()) -> [[String]] {
     let domain = "gui/\(uid)", service = "\(domain)/\(label)"
-    return disable ? [["bootout", service], ["disable", service]] : [["enable", service], ["bootstrap", domain, plist]]
+    return disable ? [["disable", service], ["bootout", service]] : [["enable", service], ["bootstrap", domain, plist]]
 }
 
 extension Group {
@@ -85,7 +86,7 @@ enum Agents {
         guard mine(label, plist: plist, home: home) else { return "MemBar acts only on your own launch agents in ~/Library/LaunchAgents, not on Apple's." }
         let r = launchctl(agentSteps(disable: disabled, label: label, plist: plist))
         // The list is the override that MemBar set in launchd: in once `disable` ran, out once `enable` ran.
-        if disabled ? r.done == 2 : r.done >= 1 {
+        if r.done >= 1 {
             var l = UserDefaults.standard.disabledAgents
             l[label] = disabled ? plist : nil
             UserDefaults.standard.set(l.isEmpty ? nil : l, forKey: "disabledAgents")
@@ -195,7 +196,7 @@ func agentsTest() {
     precondition(!may("x", "/System/Library/LaunchAgents/x.plist") && !may("x", mine + "/../../../../Library/LaunchAgents/x.plist"))
     precondition(!may("x", mine + "/sub/x.plist") && !may("x", mine + "/x.txt") && !may("x", mine) && !may("", mine + "/a.plist") && !may("a/b", mine + "/a.plist"))
     precondition(agentSteps(disable: true, label: "com.foo.agent", plist: "/p.plist", uid: 501)
-                 == [["bootout", "gui/501/com.foo.agent"], ["disable", "gui/501/com.foo.agent"]])
+                 == [["disable", "gui/501/com.foo.agent"], ["bootout", "gui/501/com.foo.agent"]])
     precondition(agentSteps(disable: false, label: "com.foo.agent", plist: "/p.plist", uid: 501)
                  == [["enable", "gui/501/com.foo.agent"], ["bootstrap", "gui/501", "/p.plist"]])
     var g = Group(name: "Foo", isApp: true, leftover: true)

@@ -213,8 +213,8 @@ func containersTest() {
         precondition(pids(t["Ghostty"]) == [10, 11, 12, 13, 14] && t["Ghostty"]!.isVM && pids(t["node"]) == [15, 16] && t["node"]!.orphan)
         // The group's Quit with no app to ask: the tools, not Apple's VM process; its own line still can.
         let vm = gs["Linux VM"]!, alone = Group(name: "Linux VM", isApp: true, procs: [procs[41]!])
-        precondition(Set(quitProcs(vm).map(\.pid)) == [20, 21, 22, 40] && allowed([procs[23]!], in: vm, uid: 501, me: 99).quit)
-        precondition(allowed(alone, app: false, uid: 501, me: 99) == Allowed(pause: true) && Set(quitProcs(gs["Docker"]!).map(\.pid)) == [50, 51])
+        precondition(Set(quitProcs(vm.procs).map(\.pid)) == [20, 21, 22, 40] && allowed([procs[23]!], in: vm, uid: 501, me: 99).quit)
+        precondition(allowed(alone, app: false, uid: 501, me: 99) == Allowed(pause: true) && Set(quitProcs(gs["Docker"]!.procs).map(\.pid)) == [50, 51])
     }
 
     // Started in VS Code's terminal: VS Code's while it runs; after it quits, Recall's memory does not make it a leftover.

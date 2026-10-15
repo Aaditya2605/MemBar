@@ -8,7 +8,6 @@ import SwiftUI
 
 struct Sample {
     let at: Date
-    let ram: Int64
     let groups: [String: Int64]  // group id → memory, only for groups of 50 MB or more (see add)
 }
 
@@ -23,12 +22,11 @@ struct History {
     /// `allUsers`: the scan has fresh memory of other users' processes (top runs only with
     /// the panel open). Without it they count 0 or an old value, so a group with one gets
     /// no point: its line would drop, then jump when the panel opens.
-    mutating func add(_ groups: [Group], sys: SysMem, allUsers: Bool = true, at now: Date = Date()) {
+    mutating func add(_ groups: [Group], allUsers: Bool = true, at now: Date = Date()) {
         // ponytail: wall clock, so a clock set back stops new samples until it catches up.
         if let last = samples.last, now.timeIntervalSince(last.at) < 15 { return }
         let me = getuid(), big = groups.filter { $0.mem >= 50 << 20 && (allUsers || $0.procs.allSatisfy { $0.uid == me }) }
-        samples.append(Sample(at: now, ram: sys.ram,
-                              groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
+        samples.append(Sample(at: now, groups: Dictionary(uniqueKeysWithValues: big.map { ($0.id, $0.mem) })))
         // Older than an hour, or past the cap: into the 24 h points. Oldest first: add only appends later times.
         let old = max(samples.prefix { now.timeIntervalSince($0.at) > 3600 }.count, samples.count - Self.cap)
         for s in samples.prefix(old) { fold(&older, s) }
@@ -114,7 +112,7 @@ extension History {
     /// `HISTORY=1 MemBar --snapshot ...`: an hour of made-up samples around the live
     /// numbers, so the badge, sparklines and Details chart show without an hour of waiting.
     /// The largest group grows from half its size, so it gets the badge.
-    static func demo(_ groups: [Group], sys: SysMem) -> History {
+    static func demo(_ groups: [Group]) -> History {
         var h = History()
         let now = Date(), big = groups.max { $0.mem < $1.mem }?.id
         for i in 0..<cap {
@@ -122,13 +120,13 @@ extension History {
             let gs = groups.filter { $0.mem >= 50 << 20 }.map { g in
                 (g.id, g.id == big ? Int64(Double(g.mem) * (0.5 + 0.5 * f + 0.02 * wave)) : g.mem)
             }
-            h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15, ram: Int64(Double(sys.ram) * (0.9 + 0.1 * f + 0.02 * wave)),
+            h.samples.append(Sample(at: now - Double(cap - 1 - i) * 15,
                                     groups: Dictionary(uniqueKeysWithValues: gs)))
         }
         for i in 0..<276 {  // the 23 h before, one point each 5 min: the Details 24 h chart
             let wave = sin(Double(i) / 24)
             let gs = groups.map { ($0.id, Int64(Double($0.mem) * ($0.id == big ? 0.5 : 1) * (0.85 + 0.1 * wave))) }
-            h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300, ram: Int64(Double(sys.ram) * (0.8 + 0.1 * wave)),
+            h.older.append(Sample(at: now - 3600 - Double(276 - i) * 300,
                                   groups: topGroups(Dictionary(uniqueKeysWithValues: gs))))
         }
         return h
@@ -167,19 +165,19 @@ func historySelfTest() {
     var h = History()
     let g = [Group(name: "Big", isApp: true, procs: [Proc(pid: 2, ppid: 1, uid: 501, path: "/b", mem: 60 * mb)]),
              Group(name: "Small", isApp: true, procs: [Proc(pid: 3, ppid: 1, uid: 501, path: "/s", mem: 10 * mb)])]
-    h.add(g, sys: SysMem(), at: t0)
-    h.add(g, sys: SysMem(), at: t0 + 5)  // under 15 s after the last one: skipped
+    h.add(g, at: t0)
+    h.add(g, at: t0 + 5)  // under 15 s after the last one: skipped
     precondition(h.samples.count == 1 && h.samples[0].groups == ["Big|true": 60 * mb])
-    for i in 1...600 { h.add(g, sys: SysMem(), at: t0 + Double(i) * 15) }  // 2.5 h, one each 15 s
+    for i in 1...600 { h.add(g, at: t0 + Double(i) * 15) }  // 2.5 h, one each 15 s
     precondition(h.samples.count == History.cap && h.points("Big|true").count == History.cap)
     precondition(h.points("Small|true").isEmpty)
-    for i in 1...120 { h.add(g, sys: SysMem(), at: t0 + 9000 + Double(i) * 60) }  // panel closed: one a minute
+    for i in 1...120 { h.add(g, at: t0 + 9000 + Double(i) * 60) }  // panel closed: one a minute
     precondition(h.samples.count == 61)  // only the last hour
     // Panel closed: no top, so a group with a root process has no true memory and no point.
     let mine = Group(name: "Mine", isApp: true, procs: [Proc(pid: 5, ppid: 1, uid: getuid(), path: "/m", mem: 60 * mb)])
     let root = Group(name: "Root", isApp: false, procs: [Proc(pid: 4, ppid: 1, uid: 0, path: "/r", mem: 60 * mb)] + mine.procs)
-    h.add([mine, root], sys: SysMem(), allUsers: false, at: t0 + 20000)
+    h.add([mine, root], allUsers: false, at: t0 + 20000)
     precondition(h.samples.last!.groups == ["Mine|true": 60 * mb])
-    h.add([root], sys: SysMem(), at: t0 + 20015)
+    h.add([root], at: t0 + 20015)
     precondition(h.points("Root|false").map(\.mem) == [120 * mb])
 }

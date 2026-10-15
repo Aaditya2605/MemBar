@@ -50,7 +50,7 @@ func insight(groups: [Group], sys: SysMem, history: History, now: Date, hidden: 
     if shows("sims"), sum(sims) >= 1 << 30, let big = sims.max(by: { $0.mem < $1.mem }) {
         let t = sims.allSatisfy(\.isEmulator) ? "The Android emulator uses \(short(sum(sims)))" : "Booted simulators use \(short(sum(sims)))"
         return Insight(id: "sims", symbol: "iphone", text: t, short: t,
-                       help: "Running while Simulator or Android Studio is open: \(list(sims)). Shut down the devices you do not use.",
+                       help: "Running while Simulator, Xcode, simctl, xcodebuild or Android Studio uses them: \(list(sims)). Shut down the devices you do not use.",
                        button: "Show", group: big.id)
     }
     return nil
@@ -121,7 +121,7 @@ func insightTest() {
         Group(name: name, isApp: isApp, procs: [Proc(pid: 9, ppid: 1, uid: uid, path: path, mem: m * mb)], leftover: leftover)
     }
     func rise(_ by: [String: (from: Int64, step: Int64)]) -> History {  // 30 min, one sample each 15 s, `step` MB more each
-        History(samples: (0...120).map { i in Sample(at: t0 - 1800 + Double(i) * 15, ram: 0, groups: by.mapValues { ($0.from + Int64(i) * $0.step) * mb }) })
+        History(samples: (0...120).map { i in Sample(at: t0 - 1800 + Double(i) * 15, groups: by.mapValues { ($0.from + Int64(i) * $0.step) * mb }) })
     }
     let sim = g("iOS Simulator", 1100, isApp: false, path: "launchd_sim")
     // Each candidate holds: two idle apps (1.2 GB, never a line: their rows say it), swap at 25% of 16 GB at Warning, Claude, Slack and macOS growing, a booted simulator.
@@ -142,7 +142,7 @@ func insightTest() {
     let sl = run(hidden: ["swap", "growing|Claude|true"])!  // by group: Slack's growth still shows
     precondition(sl.id == "growing|Slack|true" && sl.text == "Slack keeps growing: +360 MB in 30 min")
     let b = run(hidden: ["swap", "growing|Claude|true", "growing|Slack|true"])!
-    precondition(b.id == "sims" && b.text == "Booted simulators use 1.1 GB" && b.group == "iOS Simulator|false")
+    precondition(b.id == "sims" && b.text == "Booted simulators use 1.1 GB" && b.group == "iOS Simulator|false" && b.help.contains("uses them: iOS Simulator 1."))
     precondition(run(hidden: ["swap", "growing|Claude|true", "growing|Slack|true", "sims"]) == nil)
     precondition(run([], SysMem(), History()) == nil && run([g("A", 9000)], SysMem(), History()) == nil)  // a big app alone: nothing to say
 

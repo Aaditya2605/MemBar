@@ -90,7 +90,7 @@ func logLine(_ e: Freed.Entry) -> String {
 }
 
 extension UserDefaults {
-    @objc dynamic var quitIdle: [String: Int] { dictionary(forKey: "quitIdle") as? [String: Int] ?? [:] }
+    var quitIdle: [String: Int] { dictionary(forKey: "quitIdle") as? [String: Int] ?? [:] }
 }
 
 /// The last 20 actions: Settings > Recent Actions.
@@ -187,11 +187,7 @@ struct QuitIdleMenu: View {
 
     var body: some View {
         let rule = idleRule(g.name) ?? 0
-        Picker("Quit When Idle", selection: Binding(get: { rule }, set: { m in
-            var r = UserDefaults.standard.quitIdle
-            r[g.name] = m == 0 ? nil : m
-            UserDefaults.standard.set(r, forKey: "quitIdle")
-        })) {
+        Picker("Quit When Idle", selection: Binding(get: { rule }, set: { Rules.set("quitIdle", g.name, $0 > 0 ? $0 : nil) })) {
             Text("Never").tag(0)
             ForEach(quitIdleChoices, id: \.self) { Text(hours($0).capitalized).tag($0) }
         }

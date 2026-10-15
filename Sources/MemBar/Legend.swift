@@ -24,7 +24,7 @@ enum Badge {
 }
 
 /// Gear menu > What the Badges Mean: a popover over the panel with each badge and its meaning,
-/// in CONTEXT.md's words. The real views and labels: Badge, PortChip, changeLabel, the menu bar's glyph.
+/// in CONTEXT.md's words. The real views and labels: Badge, PortChip, ChangeText, the menu bar's glyph.
 struct BadgeLegend: View {
     var body: some View {
         let g = Group(name: "", isApp: true, procs: [Proc(pid: 0, ppid: 0, uid: 0, path: "", mem: 1000 << 20)])
@@ -40,8 +40,8 @@ struct BadgeLegend: View {
             line(Badge.growing, "Memory rose by 25% and 300 MB or more, steadily.")
             line(Badge.usage("idle 3 h"), "Open, 500 MB or more, not frontmost for 2 h or more.")
             line(Badge.usage("for 2 d"), "How long a leftover or orphan has run.")
-            line(change(new), new.help + ".")
-            line(change(grew), "The change since the mark. Green: it shrank.")
+            line(ChangeText(label: new), new.help + ".")
+            line(ChangeText(label: grew), "The change since the mark. Green: it shrank.")
             line(HStack(spacing: 4) { Badge.bell(on: true); Badge.bell(on: false) }.accessibilityElement(children: .ignore).accessibilityLabel("Bell"),
                  "Alerts above its limit. Slashed: the alert is off.")
             line(Badge.quitIdle, "Quit When Idle: MemBar asks it to quit when unused.")
@@ -70,11 +70,6 @@ struct BadgeLegend: View {
             Text(meaning).font(.caption).fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    /// As ChangeText draws it.
-    func change(_ l: (text: String, color: Color, help: String)) -> some View {
-        Text(l.text).font(.caption).monospacedDigit().foregroundStyle(l.color)
     }
 }
 
