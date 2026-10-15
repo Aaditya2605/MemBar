@@ -302,7 +302,7 @@ func alertsTest() {
     precondition(run([g("Small", 600, leftover: true)], 560) == ["leftover Small"])  // grew to 500 MB in the same appearance
     precondition(run([g("Root", 900, leftover: true, uid: 0)], 600) == [] && run([g("Root", 900, leftover: true, uid: 0)], 660) == ["leftover Root"])
     precondition(!last[0].stop)  // other users' processes: no Stop, as the row
-    let sim = Group(name: "iOS Simulator", isApp: false, procs: [Proc(pid: 9, ppid: 1, uid: 0, path: "launchd_sim", mem: 900 * mb)], leftover: true)
+    let sim = Group(name: "iOS Simulator", isApp: false, procs: [Proc(pid: 9, ppid: 1, uid: me, path: "launchd_sim", mem: 900 * mb)], leftover: true)
     _ = run([sim], 700)
     precondition(run([sim], 760) == ["leftover iOS Simulator"] && last[0].stop && last[0].body.hasPrefix("A device is booted"))
     _ = run([], 800)

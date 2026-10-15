@@ -1,13 +1,12 @@
 import AppKit
 import SwiftUI
 
-// Rules that act with no click, and what the stops freed. Auto-stop (Settings): a
+// Rules that act with no click, and Recent Actions. Auto-stop (Settings): a
 // leftover that stays one for 10 min or 1 h gets Stop. Quit When Idle (right-click on an
 // open app): the app is asked to quit after hours in the background. Both run in each
 // scan, also with the panel closed (60 s); the decisions are pure, see selfTest.
 // UserDefaults keys: "autoStop" (Int, minutes; 0 = off), "autoStopSimulator" (Bool),
-// "quitIdle" ([String: Int], group name → minutes), "freedBytes" (Int), "freedSince"
-// (seconds since 1970, as Usage stores times), "recentActions" (JSON, newest first).
+// "quitIdle" ([String: Int], group name → minutes), "recentActions" (JSON, newest first).
 
 /// Seconds a group must stay a leftover before auto-stop; nil = off. Checked: `defaults
 /// write` can store anything.
@@ -23,12 +22,12 @@ func idleRule(_ name: String, _ rules: [String: Int] = UserDefaults.standard.qui
 /// "1 hour", "4 hours".
 func hours(_ minutes: Int) -> String { "\(minutes / 60) hour\(minutes == 60 ? "" : "s")" }
 
-/// What Stop acts on: the simulator (simctl), or a group with a process of this user.
-func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.isSimulator || g.procs.contains { $0.uid == uid } }
+/// What Stop acts on, as stop() does: a booted simulator device of this user (simctl), or a process of this user.
+func stoppable(_ g: Group, uid: uid_t = getuid()) -> Bool { g.procs.contains { $0.uid == uid && (!g.isSimulator || $0.name == "launchd_sim") } }
 
 /// The groups a Stop still acts on: not one whose processes all were in its last Stop (a
 /// double-click or Stop All before the rescan, Alerts and auto-stop in one scan, a slow
-/// exit), so the freed total and the log count it once. A respawn has new PIDs.
+/// exit), so the log counts it once. A respawn has new PIDs.
 func notStopped(_ gs: [Group], _ stopped: [String: Set<pid_t>]) -> [Group] {
     gs.filter { !Set($0.procs.map(\.pid)).isSubset(of: stopped[$0.id] ?? []) }
 }
@@ -94,7 +93,7 @@ extension UserDefaults {
     @objc dynamic var quitIdle: [String: Int] { dictionary(forKey: "quitIdle") as? [String: Int] ?? [:] }
 }
 
-/// The freed total and the last 20 actions.
+/// The last 20 actions: Settings > Recent Actions.
 enum Freed {
     struct Entry: Codable { let at: Date, name: String, mem: Int64, how: String }
 
@@ -107,9 +106,7 @@ enum Freed {
     /// what the group held when it was stopped.
     static func record(_ gs: [Group], how: String) {
         guard !gs.isEmpty else { return }
-        let d = UserDefaults.standard, now = Date()
-        d.set(d.integer(forKey: "freedBytes") + gs.reduce(0) { $0 + Int($1.mem) }, forKey: "freedBytes")
-        if d.double(forKey: "freedSince") == 0 { d.set(now.timeIntervalSince1970, forKey: "freedSince") }
+        let now = Date()
         let new = gs.map { Entry(at: now, name: $0.name, mem: $0.mem, how: how) }
         log = logged(log, new)
     }
@@ -122,7 +119,7 @@ enum Auto {
     private static var tried: [String: Date] = [:]  // app name → its last-front time when asked to quit
 
     /// Quit When Idle asked `name` to quit in this idle period (not frontmost since): Restart When Above
-    /// skips it, else it quits it again and reopens it, and Freed counts it twice. `map ?? false`: two nils are equal.
+    /// skips it, else it quits it again and reopens it, and Recent Actions lists it twice. `map ?? false`: two nils are equal.
     /// ponytail: an app opened again in the background, never frontmost, stays skipped until it comes to the front.
     static func quitAsked(_ name: String) -> Bool { tried[name].map { $0 == Usage.lastFront(name) } ?? false }
 
@@ -143,8 +140,9 @@ enum Auto {
         let front = NSWorkspace.shared.frontmostApplication?.executableURL.map { appOf($0.path).name }
         for g in idleQuits(groups, rules: rules, ruled: ruled, lastFront: Usage.lastFront, frontmost: front, tried: tried,
                            paused: Rules.pausedPIDs, now: now) {
-            tried[g.name] = Usage.lastFront(g.name)
+            // No app runs (only a root helper or an extension is left): nothing is asked, so the stretch is not used up.
             guard let app = Actions.runningApp(g) else { continue }
+            tried[g.name] = Usage.lastFront(g.name)
             // What the pause rule stopped must answer the quit. Its clock starts again, so Rules.check
             // right after this does not pause it partway through the quit, or again if the user cancels.
             Rules.resume(g.name)
@@ -200,29 +198,16 @@ struct QuitIdleMenu: View {
     }
 }
 
-/// The panel's one footer line: "23 small groups, 158 MB · Freed 12.40 GB since Oct 3". Each part
-/// only when it has something: the groups that Settings hides, what the stops freed. One line, not two.
+/// The panel's footer line: "23 small groups, 158 MB", the groups that Settings hides. Only when there are some.
 struct Footer: View {
     let small: [Group]  // hidden by Settings > Hide Groups Under 10 MB
-    @AppStorage("freedBytes") private var bytes = 0
-    @AppStorage("freedSince") private var since = 0.0
 
     var body: some View {
-        if !small.isEmpty || bytes > 0 {
-            let d = Date(timeIntervalSince1970: since), day = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        if !small.isEmpty {
             Divider()
-            HStack(spacing: 4) {
-                if !small.isEmpty {
-                    Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")
-                        .help("Hidden by Settings > Hide Groups Under 10 MB")
-                }
-                if !small.isEmpty && bytes > 0 { Text("·").accessibilityHidden(true) }
-                if bytes > 0 {
-                    Text("Freed \(fmt(Int64(bytes))) since \(d.formatted(Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? day : day.year()))")
-                        .help("Memory of the groups that Stop, Stop All, Auto-Stop, Quit When Idle and Restart When Above ended, as it was at each stop. Settings > Recent Actions lists them.")
-                }
-            }
-            .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).padding(.vertical, 4)
+            Text("\(small.count) small group\(small.count == 1 ? "" : "s"), \(fmt(small.reduce(0) { $0 + $1.mem }))")
+                .help("Hidden by Settings > Hide Groups Under 10 MB")
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).padding(.vertical, 4)
         }
     }
 }

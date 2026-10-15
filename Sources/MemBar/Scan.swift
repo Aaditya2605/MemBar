@@ -121,11 +121,12 @@ func owner(of pid: pid_t, responsible: pid_t, procs: [pid_t: Proc]) -> pid_t {
 }
 
 /// Groups sorted by memory, leftovers first. `owners`: remembered app owners (Recall).
-/// `uid`: only its processes make a group a leftover by a deleted executable.
+/// `uid`: a group is a leftover only with a process of `uid` that no app extension owns (the simulator:
+/// a booted device of `uid`), and only its processes make a group a leftover by a deleted executable.
 func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:], uid: uid_t = getuid()) -> [Group] {
     let open = openApps(procs.values.lazy.map(\.path))
     var groups: [String: Group] = [:]
-    var notExtension: Set<String> = []  // groups with a process that no app extension owns
+    var notExtension: Set<String> = []  // groups with a process of `uid` that no app extension owns
     var notDeleted: Set<String> = []  // groups with an owner whose executable is there, or that is not this user's
     for p in procs.values {
         let top = owner(of: p.pid, responsible: responsible(p.pid), procs: procs)
@@ -134,16 +135,18 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
         if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
         if owners[top]?.app == topPath { groups[key]!.recalled = true }
-        if !topPath.contains(".appex/") { notExtension.insert(key) }
+        if p.uid == uid && !topPath.contains(".appex/") { notExtension.insert(key) }
         let t = procs[top] ?? p
         if !t.deleted || t.uid != uid { notDeleted.insert(key) }
     }
     return groups.values.map { g in
         var g = g
         g.procs.sort { $0.mem > $1.mem }
-        // App extensions are not leftovers: macOS starts them with the app quit (a
-        // notification extension decrypts each push), and starts them again after Stop.
-        g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open)
+        // Stop must have a process to act on: one of this user that no app extension owns.
+        // Not an extension: macOS starts it with the app quit (a notification extension decrypts
+        // each push), and starts it again after Stop. Not other users' (an updater daemon of root):
+        // Stop never signals them. The simulator: a booted device of this user (stoppable).
+        g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open) && stoppable(g, uid: uid)
         // Each owner runs a deleted file: nothing can start it again (an uninstalled brew
         // service). So also an app extension, or an app that reads as open (a Python.app from
         // an upgraded Cellar). Not when one owner's file is there (an old `claude` under the
@@ -408,7 +411,7 @@ func selfTest() {
     let resp: [pid_t: pid_t] = [10: 999, 11: 999, 21: 20, 51: 50]  // 999 = dead; others: -1 (unknown)
     precondition(owner(of: 11, responsible: 999, procs: procs) == 10)
     precondition(owner(of: 21, responsible: 20, procs: procs) == 20)
-    let groups = group(procs, responsible: { resp[$0] ?? -1 })
+    let groups = group(procs, responsible: { resp[$0] ?? -1 }, uid: 501)
     let byName = Dictionary(uniqueKeysWithValues: groups.map { ($0.name, $0) })
     precondition(byName["Cursor"]!.leftover && byName["Cursor"]!.procs.map(\.pid) == [10, 11])
     precondition(!byName["Claude"]!.leftover && byName["Claude"]!.mem == 1300 << 20)
@@ -437,6 +440,16 @@ func selfTest() {
         precondition(gs["Python"]!.leftover && gs["Python"]!.deleted)  // its Python.app reads as open
         precondition(!claude.leftover && !claude.deleted && claude.procs.contains { $0.pid == 70 })  // an old `claude` under the open app
         precondition(!gs["postgres"]!.leftover && !gs["tool"]!.leftover && !gs["macOS"]!.leftover)  // root's; one owner of two
+        // An app's daemon that root runs (OneDrive's updater) with the app quit: no Stop can act on it, so not a leftover.
+        let daemon = [pid_t(60): Proc(pid: 60, ppid: 1, uid: 0, path: "/Applications/OneDrive.app/Contents/StandaloneUpdaterDaemon.xpc/Contents/MacOS/StandaloneUpdaterDaemon", mem: 7 << 20)]
+        precondition(!group(daemon, responsible: { $0 }, uid: 501)[0].leftover && group(daemon, responsible: { $0 }, uid: 0)[0].leftover)
+        // With the user's app extension next to it: neither process is a leftover, so the group is not.
+        var withExt = daemon
+        withExt[61] = Proc(pid: 61, ppid: 1, uid: 501, path: "/Applications/OneDrive.app/Contents/PlugIns/FinderSync.appex/Contents/MacOS/FinderSync", mem: 9 << 20)
+        precondition(group(withExt, responsible: { $0 }, uid: 501).first { $0.name == "OneDrive" }.map { $0.procs.count == 2 && !$0.leftover } == true)
+        // A booted device of another user only: Stop shuts down only this user's (stop()), so not a leftover.
+        let sim = [pid_t(70): Proc(pid: 70, ppid: 1, uid: 502, path: "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/launchd_sim", mem: 50 << 20)]
+        precondition(!group(sim, responsible: { $0 }, uid: 501)[0].leftover && group(sim, responsible: { $0 }, uid: 502)[0].leftover)
         var cp = procs
         cp[10]!.deleted = true  // a leftover by its own rule: its text and auto-stop stay
         let cur = group(cp, responsible: { resp[$0] ?? -1 }, uid: 501).first { $0.name == "Cursor" }!
@@ -522,7 +535,7 @@ func selfTest() {
     precondition(portsLabel([]) == "" && portsLabel([80]) == ", listens on port 80" && portsLabel([80, 443]) == ", listens on ports 80, 443")
     var pp = procs
     addPorts(&pp, [11: [3000], 20: [9229, 3000], 777: [1]])  // 777: gone since the read
-    let pg = Dictionary(uniqueKeysWithValues: group(pp, responsible: { resp[$0] ?? -1 }).map { ($0.name, $0) })
+    let pg = Dictionary(uniqueKeysWithValues: group(pp, responsible: { resp[$0] ?? -1 }, uid: 501).map { ($0.name, $0) })
     precondition(pg["Cursor"]!.ports == [3000] && pg["Claude"]!.ports == [3000, 9229] && pg["macOS"]!.ports.isEmpty)
     precondition(matching(pg["Cursor"]!, ":3000").map(\.pid) == [11] && matching(pg["Claude"]!, "9229").map(\.pid) == [20])
     historySelfTest()
@@ -682,11 +695,11 @@ func selfTest() {
         precondition(appOf(sdk + "qemu/darwin-aarch64/qemu-system-aarch64") == ("Android Emulator", true) && !isCLI(sdk + "emulator"))
         let emu = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(70, 1, studio, 900), p(71, 70, sdk + "emulator", 20),
                                                     p(72, 71, sdk + "qemu/darwin-aarch64/qemu-system-aarch64", 3000), p(73, 72, sdk + "crashpad_handler", 5)])
-        let withStudio = group(emu, responsible: { [71: 70, 72: 70, 73: 70][$0] ?? $0 }).first { $0.isEmulator }!
+        let withStudio = group(emu, responsible: { [71: 70, 72: 70, 73: 70][$0] ?? $0 }, uid: 501).first { $0.isEmulator }!
         precondition(!withStudio.leftover && withStudio.procs.map(\.pid) == [72, 71, 73])  // its own group, not Android Studio's
         var quit = emu
         quit[70] = nil
-        let alone = group(quit, responsible: { $0 }).first { $0.isEmulator }!
+        let alone = group(quit, responsible: { $0 }, uid: 501).first { $0.isEmulator }!
         precondition(alone.leftover && alone.isApp && alone.mem == 3025 << 20)
         precondition(!isLeftover(alone, open: ["android studio preview"]) && isLeftover(alone, open: ["xcode", "studio"]))
     }
@@ -697,16 +710,16 @@ func selfTest() {
         let ps = Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(60, 1, code, 500), p(61, 60, "/bin/zsh", 5),
                                                    p(62, 61, sdk + "emulator", 20), p(63, 62, sdk + "qemu/darwin-aarch64/qemu-system-aarch64", 3000),
                                                    p(64, 63, sdk + "crashpad_handler", 5)])
-        let byCode = group(ps, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 })
+        let byCode = group(ps, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 }, uid: 501)
         let vs = byCode.first { $0.name == "Visual Studio Code" }!
         precondition(!byCode.contains { $0.isEmulator || $0.leftover } && Set(vs.procs.map(\.pid)) == [60, 61, 62, 63, 64])
         var fromTerm = ps
         fromTerm[60] = p(60, 1, term, 80).1  // `emulator -avd X` in Terminal
-        precondition(!group(fromTerm, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 }).contains { $0.isEmulator || $0.leftover })
+        precondition(!group(fromTerm, responsible: { [61: 60, 62: 60, 63: 60, 64: 60][$0] ?? $0 }, uid: 501).contains { $0.isEmulator || $0.leftover })
         var quit = ps  // VS Code quit, the shell with it: the emulator alone is its own group, a leftover
         quit[60] = nil; quit[61] = nil
         quit[62] = p(62, 1, sdk + "emulator", 20).1
-        let alone = group(quit, responsible: { $0 }).first { $0.isEmulator }!
+        let alone = group(quit, responsible: { $0 }, uid: 501).first { $0.isEmulator }!
         precondition(alone.leftover && Set(alone.procs.map(\.pid)) == [62, 63, 64])
     }
 
@@ -764,7 +777,7 @@ func selfTest() {
         precondition(types("a") && types("C") && types(":") && types("3") && types("é"))
         precondition(!types("") && !types(" ") && !types("\r") && !types("\t") && !types("\u{1b}") && !types("\u{7f}") && !types("\u{F701}"))
         let cursor = byName["Cursor"]!, sim = byName["iOS Simulator"]!
-        precondition(canStop(cursor, uid: 501) && !canStop(cursor, uid: 502) && canStop(sim, uid: 502) && !canStop(byName["Claude"]!, uid: 501))
+        precondition(canStop(cursor, uid: 501) && !canStop(cursor, uid: 502) && canStop(sim, uid: 501) && !canStop(sim, uid: 502) && !canStop(byName["Claude"]!, uid: 501))
         var orphan = Group(name: "node", isApp: false, procs: [Proc(pid: 80, ppid: 1, uid: 501, path: "/opt/homebrew/bin/node", mem: 1)])
         orphan.orphan = true  // not counted as a leftover (Settings): the row still has Stop
         precondition(canStop(orphan, uid: 501) && !canStop(orphan, uid: 502))
@@ -827,7 +840,7 @@ func selfTest() {
         again[0].leftover = false  // its app opened for one scan: the clock starts again
         let c2 = leftoverClock(again, since: c1, now: t0 + 20 * m)
         precondition(c2["Cursor|true"] == nil && leftoverClock(groups, since: c2, now: t0 + 21 * m)["Cursor|true"] == t0 + 21 * m)
-        precondition(stoppable(byName["iOS Simulator"]!, uid: 7) && stoppable(byName["Cursor"]!, uid: 501) && !stoppable(byName["Cursor"]!, uid: 502))
+        precondition(stoppable(byName["iOS Simulator"]!, uid: 501) && !stoppable(byName["iOS Simulator"]!, uid: 7) && stoppable(byName["Cursor"]!, uid: 501) && !stoppable(byName["Cursor"]!, uid: 502))
         // Stop again before the rescan (double-click, Stop All, Alerts + auto-stop): acted on and counted once.
         let cur = byName["Cursor"]!, done = [cur.id: Set<pid_t>([10, 11])]
         var exiting = cur, back2 = cur
@@ -837,7 +850,7 @@ func selfTest() {
         // A server from VS Code's terminal (nohup), kept in its group by Recall after VS Code quit: by hand only.
         let code = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", node = "/opt/homebrew/bin/node"
         let kept = group(Dictionary(uniqueKeysWithValues: [p(1, 0, "/sbin/launchd", 10), p(61, 1, node, 300), p(62, 61, "/opt/homebrew/bin/esbuild", 20)]),
-                         responsible: { $0 }, owners: [61: AppOwner(app: code, exe: node, uid: 501)]).first { $0.name == "Visual Studio Code" }!
+                         responsible: { $0 }, owners: [61: AppOwner(app: code, exe: node, uid: 501)], uid: 501).first { $0.name == "Visual Studio Code" }!
         precondition(kept.leftover && kept.recalled && kept.procs.count == 2 && stops([kept], [kept.id: t0], at: h).isEmpty)
         precondition(!byName["Cursor"]!.recalled)  // its own Application Support folder: no memory needed
 
