@@ -63,7 +63,7 @@ To learn each label in the list, open the gear menu, then choose **What the Badg
 | --- | --- |
 | Group | All the processes that work for one app. |
 | Owner | The app that a process works for. MemBar uses the macOS "responsible" process (as Activity Monitor does), then the parent chain, then the program path. |
-| Leftover | A group that belongs to an app, while that app is not open, with at least one process of yours. Also a booted simulator while Simulator.app is not open, and a group whose processes all run a deleted program file (for example, an uninstalled brew service). |
+| Leftover | A group that belongs to an app, while that app is not open, with at least one process of yours. Also a booted simulator while Simulator.app and Xcode are not open and no `simctl` or `xcodebuild` runs, and a group whose processes all run a deleted program file (for example, an uninstalled brew service). |
 | Orphan | A command-line process of yours (dev server, watcher, MCP server) that lost its terminal or agent. It is not a leftover unless you set it in Settings. |
 | Memory | The physical footprint, as the "Memory" column in Activity Monitor. It includes compressed memory. |
 
@@ -73,7 +73,7 @@ To learn each label in the list, open the gear menu, then choose **What the Badg
 
 - Processes in the "macOS" group, launchd, and MemBar itself.
 - Processes that other users own. The app and `--stop` do not run as root.
-- Apple's own programs, except inside the group of a third-party app.
+- Apple's own programs, except inside the group of a third-party app, an orphan or a deleted program (as part of its process tree).
 - A virtual machine group (Docker, OrbStack, Lima, UTM) is never a leftover, so Stop and the rules do not act on it. Stop could cut a VM off while it writes.
 
 Rules that act without a click are off until you set them. Stop sends SIGTERM to each process. After 3 seconds, it sends SIGKILL to the processes that still run. The simulator gets `xcrun simctl shutdown`, not a signal.
@@ -91,7 +91,7 @@ The app is also a command-line tool for scripts and agent hooks:
 | `--list` | Show the groups as text. |
 | `--json [--cpu]` | Show groups, RAM, swap and pressure as JSON. `--cpu` adds CPU %. |
 | `--leftovers` | Show one leftover on each line. Exit 1 if there are leftovers. |
-| `--stop [NAME ...] [--dry-run]` | Stop all leftovers, or only the named ones. |
+| `--stop [NAME ...] [--dry-run]` | Stop all leftovers, or only the named ones. Exit 1 if a name is not a leftover or a group is skipped. |
 | `--test` | Run the self-check of the rules. It prints `ok`. |
 
 Run `--help` for all the flags. The URLs `membar://open`, `membar://refresh` and `membar://report` open the panel, scan again or copy a Markdown report. No URL stops a process.

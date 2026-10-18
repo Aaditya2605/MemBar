@@ -76,12 +76,17 @@ enum Usage {
     }
 
     private static func activated(_ app: NSRunningApplication?) {
-        let names = inUse(app), now = Date().timeIntervalSince1970
+        let names = inUse(app)
         guard !names.isEmpty else { return }
-        for f in front { seen[f] = now }  // they were frontmost until now
-        front = Set(names)
-        for n in names { seen[n] = now }
+        (seen, front) = moved(seen, front: front, to: names, now: Date().timeIntervalSince1970)
         save()
+    }
+
+    /// The front changed to `names` at `now`: the apps in front until now were used until now, as the new ones.
+    static func moved(_ seen: [String: Double], front: Set<String>, to names: [String], now: Double) -> ([String: Double], Set<String>) {
+        var seen = seen
+        for n in front.union(names) { seen[n] = now }
+        return (seen, Set(names))
     }
 
     /// At most one write a minute. ponytail: an app first frontmost in the last minute
@@ -91,13 +96,15 @@ enum Usage {
         saving = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
             saving = false
-            for f in front { seen[f] = Date().timeIntervalSince1970 }
             UserDefaults.standard.set(seen, forKey: key)
         }
     }
 
     /// When app `name` was last frontmost: now while it is, nil when never seen.
-    static func lastFront(_ name: String) -> Date? { front.contains(name) ? Date() : seen[name].map(Date.init(timeIntervalSince1970:)) }
+    static func lastFront(_ name: String) -> Date? { last(name, seen: seen, front: front, now: Date()) }
+    static func last(_ name: String, seen: [String: Double], front: Set<String>, now: Date) -> Date? {
+        front.contains(name) ? now : seen[name].map(Date.init(timeIntervalSince1970:))
+    }
 
     /// Only while an app runs: not a root helper or an extension that stays after its app quit (not leftovers either).
     static func idle(_ g: Group) -> TimeInterval? {

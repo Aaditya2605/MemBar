@@ -13,6 +13,7 @@ import UserNotifications
 struct AlertState: Equatable {
     var leftovers: [String: Date] = [:]  // leftover now: since when, in this appearance
     var told: Set<String> = []  // leftovers that had their alert, until they are gone
+    var leftAt: [String: Date] = [:]  // leftover alerts in the last hour
     var critical = false, pressureAt = Date.distantPast  // the level in the last scan; the last alert
     var growing: Set<String> = [], grewAt: [String: Date] = [:]  // badge on in the last scan; alerts in the last hour
     var over: Set<String> = []  // above its limit, until it is 10% under it
@@ -42,6 +43,7 @@ func alertsToSend(prev: AlertState, groups: [Group], sys: SysMem, growth: [Strin
                   settings s: AlertSettings, uid: uid_t = getuid()) -> (AlertState, [Alert]) {
     var next = AlertState(), out: [Alert] = []
     let gs = groups.filter { !$0.ignored }  // the user said this app runs without its window on purpose
+    next.leftAt = prev.leftAt.filter { now.timeIntervalSince($0.value) < 3600 }
     for g in gs where g.leftover {
         let since = prev.leftovers[g.name] ?? now
         next.leftovers[g.name] = since
@@ -49,7 +51,9 @@ func alertsToSend(prev: AlertState, groups: [Group], sys: SysMem, growth: [Strin
         // Not at once: an app that quits leaves its helpers for a few seconds, and a scan can see them.
         guard g.mem >= 500 << 20, now.timeIntervalSince(since) >= 30 else { continue }
         next.told.insert(g.name)
-        if s.leftovers {
+        // At most once an hour: a device that each agent build puts in use (simInUse) comes back after each one.
+        if s.leftovers, next.leftAt[g.name] == nil {
+            next.leftAt[g.name] = now
             out.append(Alert(kind: .leftover, group: g.name, stop: stoppable(g, uid: uid),
                              title: "Leftover: \(g.name)", body: "\(flagHelp(g)). Its processes use \(fmt(g.mem))."))
         }
@@ -66,7 +70,7 @@ func alertsToSend(prev: AlertState, groups: [Group], sys: SysMem, growth: [Strin
     }
 
     next.grewAt = prev.grewAt.filter { now.timeIntervalSince($0.value) < 3600 }
-    for g in gs {
+    for g in gs where g.name != "macOS" && g.procs.contains(where: { $0.uid == uid }) {  // as the insight: something to quit
         guard let text = growth[g.name] else { continue }
         next.growing.insert(g.name)
         if s.growth, !prev.growing.contains(g.name), next.grewAt[g.name] == nil {
@@ -290,14 +294,14 @@ func alertsTest() {
         return last.map { "\($0.kind.rawValue) \($0.group ?? "")" }
     }
 
-    // Leftovers: once per appearance, after 30 s (a quitting app's helpers), 500 MB or more.
+    // Leftovers: once per appearance and at most once an hour, after 30 s (a quitting app's helpers), 500 MB or more.
     let cursor = [g("Cursor", 800, leftover: true)]
     precondition(run(cursor, 0) == [] && run(cursor, 29) == [])  // may be an app that quits
     precondition(run(cursor, 30) == ["leftover Cursor"])  // first appearance
     precondition(last[0].stop && last[0].title == "Leftover: Cursor" && last[0].body == "Cursor is not open. Its processes use 800 MB.")
     precondition(run(cursor, 90) == [] && run(cursor, 150) == [])  // still there
     precondition(run([], 210) == [] && st.leftovers.isEmpty && st.told.isEmpty)  // gone
-    precondition(run(cursor, 270) == [] && run(cursor, 330) == ["leftover Cursor"])  // back: again
+    precondition(run(cursor, 270) == [] && run(cursor, 330) == [])  // back within the hour: quiet
     precondition(run([], 400) == [] && run([g("Small", 300, leftover: true)], 400) == [] && run([g("Small", 300, leftover: true)], 500) == [])
     precondition(run([g("Small", 600, leftover: true)], 560) == ["leftover Small"])  // grew to 500 MB in the same appearance
     precondition(run([g("Root", 900, leftover: true, uid: 0)], 600) == [] && run([g("Root", 900, leftover: true, uid: 0)], 660) == ["leftover Root"])
@@ -309,6 +313,7 @@ func alertsTest() {
     var off = all
     off.leftovers = false; off.pressure = false; off.limits = false
     precondition(run(cursor, 800, with: off) == [] && run(cursor, 860, with: off) == [] && run(cursor, 920) == [])  // turned on: old ones stay quiet
+    precondition(run([], 3700) == [] && run(cursor, 3730) == [] && run(cursor, 3760) == ["leftover Cursor"])  // back an hour after its alert: again
 
     // Pressure: when it becomes critical, at most once in 30 min; names the 3 largest, not macOS.
     st = AlertState()
@@ -325,6 +330,8 @@ func alertsTest() {
     precondition(run(slack, 0, growth: up) == ["growth Slack"] && last[0].body == "Memory +600 MB in 30 min, now 1.46 GB.")
     precondition(run(slack, 60, growth: up) == [] && run(slack, 120) == [] && run(slack, 180, growth: up) == [])  // badge flaps
     precondition(run(slack, 3500) == [] && run(slack, 3600, growth: up) == ["growth Slack"])
+    // Nothing to quit: not macOS (Spotlight reindexing), not a group of other users only.
+    precondition(run([g("macOS", 5000), g("Root", 900, uid: 0)], 3700, growth: ["macOS": "+1 GB in 30 min", "Root": "+600 MB in 30 min"]) == [])
 
     // Limits: once per crossing, again only after 10% under; a group that is gone is under.
     st = AlertState()

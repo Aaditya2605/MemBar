@@ -94,10 +94,11 @@ func isOpen(_ name: String, _ open: Set<String>) -> Bool {
     return open.contains { o in o == n || words(o).contains(Substring(n)) || words(n).contains(Substring(o)) }
 }
 
-func isLeftover(_ g: Group, open: Set<String>) -> Bool {
+/// `simInUse`: an xcodebuild or simctl uses the booted devices (see group()).
+func isLeftover(_ g: Group, open: Set<String>, simInUse: Bool = false) -> Bool {
     if g.isVM { return false }  // Containers.swift: its app's window is often closed on purpose
     if g.isSimulator {  // launchd_sim = a booted device; agents boot them with no window
-        return !open.contains("simulator") && g.procs.contains { $0.name == "launchd_sim" }
+        return !simInUse && !open.contains("simulator") && !isOpen("Xcode", open) && g.procs.contains { $0.name == "launchd_sim" }
     }
     // ponytail: Stop's SIGKILL after 3 s can cut the emulator's quickboot snapshot save
     // short; its next boot is then cold.
@@ -125,6 +126,14 @@ func owner(of pid: pid_t, responsible: pid_t, procs: [pid_t: Proc]) -> pid_t {
 /// a booted device of `uid`), and only its processes make a group a leftover by a deleted executable.
 func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t: AppOwner] = [:], uid: uid_t = getuid()) -> [Group] {
     let open = openApps(procs.values.lazy.map(\.path))
+    // An xcodebuild or simctl of `uid` uses the booted devices (an agent's test run, install, launch,
+    // screenshot). Not a simctl whose parent is gone (an agent's `simctl … &` to a file runs until
+    // shutdown; an xcodebuild ends by itself), nor MemBar's own (Sims' `simctl list`, Stop's `shutdown`).
+    // ponytail: Claude's iOS Simulator panel shows a device with no sign in the process list (its
+    // claude-ios-sim helper runs on after the panel closes), so a device only the panel shows is a leftover.
+    let simInUse = procs.values.contains {
+        ($0.name == "xcodebuild" || $0.name == "simctl" && $0.ppid > 1) && $0.uid == uid && $0.ppid != getpid()
+    }
     var groups: [String: Group] = [:]
     var notExtension: Set<String> = []  // groups with a process of `uid` that no app extension owns
     var notDeleted: Set<String> = []  // groups with an owner whose executable is there, or that is not this user's
@@ -133,7 +142,9 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         let topPath = ownerPath(p, top: top, procs: procs, owners: owners)
         let (name, isApp) = appOf(topPath), key = "\(name)|\(isApp)"
         groups[key, default: Group(name: name, isApp: isApp)].procs.append(p)
-        if groups[key]!.bundle == nil { groups[key]!.bundle = bundlePath(topPath) }
+        // The smallest path, not the first: the loop order changes each scan, and a group can hold several
+        // apps (Claude.app and its CLI's claude.app in Application Support/Claude; Adobe's helpers).
+        if let b = bundlePath(topPath), groups[key]!.bundle.map({ b < $0 }) ?? true { groups[key]!.bundle = b }
         if owners[top]?.app == topPath { groups[key]!.recalled = true }
         if p.uid == uid && !topPath.contains(".appex/") { notExtension.insert(key) }
         let t = procs[top] ?? p
@@ -146,7 +157,7 @@ func group(_ procs: [pid_t: Proc], responsible: (pid_t) -> pid_t, owners: [pid_t
         // Not an extension: macOS starts it with the app quit (a notification extension decrypts
         // each push), and starts it again after Stop. Not other users' (an updater daemon of root):
         // Stop never signals them. The simulator: a booted device of this user (stoppable).
-        g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open) && stoppable(g, uid: uid)
+        g.leftover = notExtension.contains(g.id) && isLeftover(g, open: open, simInUse: simInUse) && stoppable(g, uid: uid)
         // Each owner runs a deleted file: nothing can start it again (an uninstalled brew
         // service). So also an app extension, or an app that reads as open (a Python.app from
         // an upgraded Cellar). Not when one owner's file is there (an old `claude` under the
@@ -326,7 +337,7 @@ func stop(_ g: Group) {
         }
         return
     }
-    let targets = g.procs.filter { $0.uid == getuid() && $0.pid > 1 && $0.pid != getpid() && same($0) }
+    let targets = g.procs.filter { maySignal($0, in: g) && same($0) }  // the menus' rule (Actions.swift), tested there
     for p in targets {
         kill(p.pid, SIGTERM)
         kill(p.pid, SIGCONT)  // paused (maybe since the scan): it acts on SIGTERM only once it runs
@@ -342,7 +353,7 @@ func stop(_ g: Group) {
 func printGroups() {
     var procs = scan(top: topMem())
     addPorts(&procs, listenPorts(procs))
-    let groups = group(procs, responsible: responsible).sorted { $0.mem > $1.mem }
+    let groups = ignoring(group(procs, responsible: responsible), neverFlagged()).sorted { $0.mem > $1.mem }  // as --leftovers
     let sys = systemMem()
     print("apps \(fmt(groups.reduce(0) { $0 + $1.mem })), RAM \(fmt(sys.ram)), swap \(fmt(sys.swap))")
     print("pressure \(sys.pressure.label.lowercased()) \(sys.usedPct)%; RAM = app \(fmt(sys.app)) + wired \(fmt(sys.wired))",
@@ -415,6 +426,9 @@ func selfTest() {
     let byName = Dictionary(uniqueKeysWithValues: groups.map { ($0.name, $0) })
     precondition(byName["Cursor"]!.leftover && byName["Cursor"]!.procs.map(\.pid) == [10, 11])
     precondition(!byName["Claude"]!.leftover && byName["Claude"]!.mem == 1300 << 20)
+    let cli = p(80, 1, "/Users/a/Library/Application Support/Claude/claude-code/2.1/claude.app/Contents/MacOS/claude", 90)
+    precondition(group([procs[20]!, cli.1].reduce(into: [:]) { $0[$1.pid] = $1 }, responsible: { $0 }, uid: 501)
+        .first { $0.name == "Claude" }?.bundle == "/Applications/Claude.app")  // the app, not its CLI's claude.app, in any loop order
     precondition(byName["iOS Simulator"]!.leftover && !byName["Weather"]!.leftover && !byName["macOS"]!.leftover)
     precondition(!byName["WhatsApp"]!.leftover && byName["WhatsApp"]!.procs.map(\.pid) == [50, 51])
     precondition(groups.map(\.name) == ["Cursor", "iOS Simulator", "Claude", "WhatsApp", "Weather", "macOS"])
@@ -450,13 +464,25 @@ func selfTest() {
         // A booted device of another user only: Stop shuts down only this user's (stop()), so not a leftover.
         let sim = [pid_t(70): Proc(pid: 70, ppid: 1, uid: 502, path: "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/launchd_sim", mem: 50 << 20)]
         precondition(!group(sim, responsible: { $0 }, uid: 501)[0].leftover && group(sim, responsible: { $0 }, uid: 502)[0].leftover)
+        // In use while Xcode is open, or while an xcodebuild or simctl of this user runs whose parent runs.
+        let simctl = "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl"
+        func booted(_ more: [(pid_t, Proc)]) -> Bool {
+            let ps = Dictionary(uniqueKeysWithValues: [(70, Proc(pid: 70, ppid: 1, uid: 501, path: sim[70]!.path, mem: 50 << 20))] + more)
+            return group(ps, responsible: { $0 }, uid: 501).first(where: \.isSimulator)!.leftover
+        }
+        precondition(booted([]) && booted([p(71, 1, simctl, 1)]) && booted([p(71, getpid(), simctl, 1)]))  // an agent's left running; MemBar's own
+        precondition(!booted([p(72, 1, "/Applications/Claude.app/Contents/MacOS/Claude", 400), p(71, 72, simctl, 1)]))
+        let xcodebuild = "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
+        precondition(!booted([p(72, 1, "/bin/zsh", 5), p(71, 72, xcodebuild, 90)]) && !booted([p(71, 1, xcodebuild, 90)]))  // also an agent's `xcodebuild test &`
+        precondition(booted([(72, Proc(pid: 72, ppid: 1, uid: 502, path: "/bin/zsh", mem: 0)), (71, Proc(pid: 71, ppid: 72, uid: 502, path: simctl, mem: 0))]))
+        precondition(!booted([p(72, 1, "/Applications/Xcode-beta.app/Contents/MacOS/Xcode", 900)]) && booted([p(72, 1, "/Applications/Xcodes.app/Contents/MacOS/Xcodes", 50)]))
         var cp = procs
         cp[10]!.deleted = true  // a leftover by its own rule: its text and auto-stop stay
         let cur = group(cp, responsible: { resp[$0] ?? -1 }, uid: 501).first { $0.name == "Cursor" }!
         precondition(cur.leftover && !cur.deleted && flagHelp(cur) == "Cursor is not open")
         let t0 = Date(timeIntervalSince1970: 1_000_000)
         precondition(autoStops([s, cur], since: [s.id: t0, cur.id: t0], after: 600, simulator: true, now: t0 + 3600, uid: 501).map(\.name) == ["Cursor"])
-        precondition(stopTargets([s], []).targets.count == 1 && !ignoring([s], ["syncthing"])[0].leftover)  // Stop All and --stop; Never Flag
+        precondition(stopTargets([s], [], uid: 501).targets.count == 1 && !ignoring([s], ["syncthing"])[0].leftover)  // Stop All and --stop; Never Flag
     }
     // CLI.swift: a stray or misspelt flag must never turn into a stop.
     precondition(parseArgs([]) == nil && parseArgs(["-h"]) == .help)
@@ -467,6 +493,7 @@ func selfTest() {
     // A typo must not start the menu bar app (it never exits); Cocoa's own args must.
     precondition(parseArgs(["--leftover"]) == .bad("unknown flag: --leftover") && parseArgs(["--json", "--cpuu"]) == .bad("unknown flag: --cpuu"))
     precondition(parseArgs(["-NSDocumentRevisionsDebugMode", "YES", "-psn_0_1"]) == nil)
+    precondition(parseArgs(["stop", "Cursor"]) == .bad("unknown argument: stop") && parseArgs(["—stop"]) == .bad("unknown argument: —stop"))
     #if DEBUG
     precondition(parseArgs(["--snapshot", "x.png"]) == nil && parseArgs(["--snapshot"]) == .bad("--snapshot needs OUT.png"))
     #else
@@ -475,9 +502,12 @@ func selfTest() {
     // As root (sudo) every root daemon would count as this user's: no --stop, even dry.
     precondition(parseArgs(["--stop", "--dry-run"], uid: 0) == .bad("--stop does not run as root: run it without sudo"))
     precondition(parseArgs(["--json"], uid: 0) == .json(cpu: false))
-    precondition(stopTargets(groups, []).targets.map(\.name) == ["Cursor", "iOS Simulator"])
-    let named = stopTargets(groups, ["cursor", "Claude", "nope"])  // Claude is open: not a leftover
-    precondition(named.targets.map(\.name) == ["Cursor"] && named.missing == ["Claude", "nope"])
+    precondition(stopTargets(groups, [], uid: 501).targets.map(\.name) == ["Cursor", "iOS Simulator"])
+    let named = stopTargets(groups, ["cursor", "Claude", "nope"], uid: 501)  // Claude is open: not a leftover
+    precondition(named.targets.map(\.name) == ["Cursor"] && named.missing == ["Claude", "nope"] && named.skipped.isEmpty)
+    // A hook in Cursor's group (PID 11) must not stop its own agent; another user's leftover has nothing to stop.
+    let skip = stopTargets(groups, [], me: 11, uid: 502)
+    precondition(skip.targets.isEmpty && skip.skipped.map(\.name) == ["Cursor", "iOS Simulator"] && skip.skipped[0].why == "this command runs in it")
     let json = try! JSONSerialization.jsonObject(with: jsonReport(groups, sys: SysMem(swap: 2, level: 2), cpu: false)) as! [String: Any]
     let cursor = (json["groups"] as! [[String: Any]])[0]
     precondition(json["swap"] as? Int64 == 2 && json["pressure"] as? String == "warning")
@@ -555,6 +585,10 @@ func selfTest() {
     precondition(ago(20) == "1 min" && ago(45 * 60) == "45 min" && ago(3 * 3600 + 3599) == "3 h" && ago(49 * 3600) == "2 d")
     let now = Date(), h: TimeInterval = 3600, claude = byName["Claude"]!  // open, 1300 MB
     precondition(idleTime(claude, lastFront: now - 2 * h, now: now) == 2 * h)
+    // Quit When Idle reads these: the app that leaves the front was used until then; the app in front is never idle.
+    let (seen, front) = Usage.moved(["Xcode": 0, "Mail": 5], front: ["Xcode"], to: ["Safari"], now: 3 * h)
+    precondition(seen == ["Xcode": 3 * h, "Mail": 5, "Safari": 3 * h] && front == ["Safari"])
+    precondition(Usage.last("Safari", seen: [:], front: front, now: now) == now && Usage.last("Xcode", seen: seen, front: front, now: now)?.timeIntervalSince1970 == 3 * h)
     precondition(idleTime(claude, lastFront: now - h, now: now) == nil && idleTime(claude, lastFront: nil, now: now) == nil)
     precondition(idleTime(byName["Cursor"]!, lastFront: now - 3 * h, now: now) == nil)  // leftover
     precondition(idleTime(byName["Weather"]!, lastFront: now - 3 * h, now: now) == nil)  // 30 MB
@@ -577,6 +611,11 @@ func selfTest() {
         // Apple's own: no signals, but its app can be asked to quit; in a third-party app's group, signals
         precondition(allowed(weather, app: false, uid: 501, me: 99) == Allowed() && allowed(weather, app: true, uid: 501, me: 99) == Allowed(quit: true, restart: true))
         precondition(maySignal(procs[51]!, in: byName["WhatsApp"]!, uid: 501, me: 99))
+        // An Apple child (`sh -c` of a dev server) in an orphan's or a deleted program's group: part of its tree, as Stop.
+        var tree = Group(name: "node", isApp: false, procs: [Proc(pid: 12, ppid: 11, uid: 501, path: "/bin/sh", mem: 0)])
+        precondition(!maySignal(tree.procs[0], in: tree, uid: 501, me: 99))
+        tree.orphan = true
+        precondition(maySignal(tree.procs[0], in: tree, uid: 501, me: 99) && !maySignal(tree.procs[0], in: tree, uid: 501, me: 11))
         var paused = cursor
         paused.procs[0].stopped = true
         precondition(!isPaused(paused, uid: 501) && allowed(paused, app: false, uid: 501, me: 99) == Allowed(quit: true, pause: true, resume: true))
@@ -765,6 +804,8 @@ func selfTest() {
         // stdout; else stderr; a tool that takes too long is stopped (it is this test's own sleep)
         precondition(toolText("/bin/echo", ["hi"], timeout: 5) == "hi\n" && toolText("/bin/ls", ["/nope-x"], timeout: 5).hasPrefix("ls: /nope-x"))
         precondition(toolText("/bin/sleep", ["9"], timeout: 0.2).hasPrefix("Stopped: it took more than") && toolText("/nope", [], timeout: 1) == "/nope did not start.")
+        // output(): half a `launchctl list` would make each brew service missing from it an orphan.
+        precondition(output("/bin/sh", ["-c", "echo half; exec /bin/sleep 5"], timeout: 0.2).isEmpty && output("/bin/echo", ["hi"]) == Data("hi\n".utf8))
     }
 
     do {  // keyboard: the next selection, the selection after a refresh, keys that type, Stop

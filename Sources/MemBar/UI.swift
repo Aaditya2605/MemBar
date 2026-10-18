@@ -34,7 +34,6 @@ final class Model: ObservableObject {
         // Main queue: KVO reports on the writer's thread, and the timer needs the main run loop.
         watches = [UserDefaults.standard.observe(\.ignored) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } },
                    UserDefaults.standard.observe(\.refreshEvery) { [weak self] _, _ in DispatchQueue.main.async { self?.schedule() } },
-                   UserDefaults.standard.observe(\.quitIdle) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } },
                    UserDefaults.standard.observe(\.countOrphans) { [weak self] _, _ in DispatchQueue.main.async { self?.refresh() } }]
     }
 
@@ -73,7 +72,7 @@ final class Model: ObservableObject {
                 // A group that is gone drops out: its old PIDs never match reused ones later.
                 self.stopped = self.stopped.filter { id, _ in g.contains { $0.id == id } }
                 self.slots = keepSlots(g, kept: self.slots)
-                self.groups = g; self.sys = s; self.history.add(g, sys: s, allUsers: open); self.onUpdate()
+                self.groups = g; self.sys = s; self.history.add(g, allUsers: open); self.onUpdate()
                 HistoryFile.save(self.history)  // at most every 5 min, off the main thread
                 if open, self.markAsked { self.markAsked = false; self.setMark(Mark(g, ram: s.ram)) }
                 Auto.check(g, self)  // auto-stop and Quit When Idle, also with the panel closed
@@ -273,7 +272,7 @@ struct Row: View {
         let growing = growthText(points), paused = isPaused(g), others = othersHelp(g), picked = nav.sel == RowID(group: g.id)
         // Only where the right-click menu shows the rule and idleQuits acts: an open app at the group's .app.
         let quitIdle = idleRule(g.name).flatMap { m in
-            g.leftover || g.ignored || Actions.runningApp(g) == nil ? nil : "Quits when not used for \(hours(m))"
+            g.leftover || g.ignored || g.isVM || Actions.runningApp(g) == nil ? nil : "Quits when not used for \(hours(m))"
         }
         // A double-click opens Details; its second toggle undoes the first.
         let open = { nav.click(RowID(group: g.id)); nav.toggle(g.id); if isDoubleClick() { Details.show(g) } }
@@ -409,7 +408,7 @@ extension Color {
 /// and the first sentence of the leftover notification.
 func flagHelp(_ g: Group) -> String {
     g.orphan ? orphanHelp : g.deleted ? "Its program file is deleted: uninstalled or upgraded"
-        : g.isSimulator ? "A device is booted and Simulator is not open"
+        : g.isSimulator ? "A device is booted and no Simulator, Xcode, simctl or xcodebuild uses it"
         : g.isEmulator ? "An emulator runs and Android Studio is not open" : "\(g.name) is not open"
 }
 
@@ -510,7 +509,7 @@ func snapshot<V: View>(to path: String, size: NSSize = NSSize(width: 400, height
     if ProcessInfo.processInfo.environment["CROWD"] != nil { model.groups.append(Containers.demo()) }  // Containers.swift
     model.sys = systemMem()
     model.slots = keepSlots(model.groups, kept: [:])
-    if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups, sys: model.sys) }
+    if ProcessInfo.processInfo.environment["HISTORY"] != nil { model.history = .demo(model.groups) }
     model.mark = ProcessInfo.processInfo.environment["MARK"] != nil ? .demo(model.groups, sys: model.sys) : nil  // never the saved one
     // FIRSTRUN=1: the first-run card. In the argument domain: in memory, never the saved flag.
     let args = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)

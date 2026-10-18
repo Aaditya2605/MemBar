@@ -188,7 +188,7 @@ enum Rules {
     /// The row's symbols: only where the rules act, an open app.
     static func notes(_ g: Group) -> [(symbol: String, help: String)] {
         let mb = restartRule(g.name), pause = UserDefaults.standard.pauseInBackground[g.name] == true
-        guard mb != nil || pause, !g.leftover, !g.ignored, Actions.runningApp(g) != nil else { return [] }
+        guard mb != nil || pause, !g.leftover, !g.ignored, !g.isVM, Actions.runningApp(g) != nil else { return [] }
         // Filled only while its jobs run: all paused, the row's "paused" word (which never drops) tells it once.
         return ruleNotes(restart: mb, pause: pause, paused: pauses.paused[g.name] != nil && !isPaused(g))
     }
